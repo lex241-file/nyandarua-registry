@@ -18,7 +18,18 @@ export const pool = mysql.createPool({
   queueLimit: 0,
   namedPlaceholders: false,
   decimalNumbers: true,
+  // Managed MySQL-compatible hosts (TiDB Cloud, PlanetScale, Aiven, etc.)
+  // require TLS. Set DB_SSL=true in .env for those; leave unset for a
+  // plain local/VPS MySQL install that doesn't use TLS.
+  ssl: process.env.DB_SSL === 'true' ? { minVersion: 'TLSv1.2' } : undefined,
 });
+
+// One-time startup diagnostic: prints exactly what DB_SSL resolved to,
+// so a misconfigured env var shows up immediately in the deploy logs
+// instead of surfacing later as a confusing "insecure transport" error.
+console.log(
+  `[db config] DB_SSL raw value = ${JSON.stringify(process.env.DB_SSL)} | SSL enabled = ${process.env.DB_SSL === 'true'}`
+);
 
 export async function pingDb(): Promise<void> {
   const conn = await pool.getConnection();
