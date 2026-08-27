@@ -1,15 +1,9 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+/// <reference types="vite/client" />
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-      },
-    },
-  },
-});
+interface ImportMetaEnv {
+  readonly VITE_API_URL?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
