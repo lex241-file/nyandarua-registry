@@ -10,10 +10,6 @@ a real client/server application:
 
 - **`backend/`** — Node.js + Express + TypeScript API, MySQL database
 - **`frontend/`** — React + TypeScript SPA (Vite), talks to the API over HTTP/JSON
-
-Google Sheets sync has been removed entirely — MySQL is now the single
-source of truth for every user, file, request, and movement.
-
 ---
 
 ## 1. Prerequisites
