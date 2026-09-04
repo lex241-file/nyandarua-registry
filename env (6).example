@@ -1,0 +1,8 @@
+# Copy to .env for local overrides (not usually needed — the Vite dev
+# server proxy in vite.config.ts already forwards /api to localhost:4000).
+#
+# In production (Vercel), don't use a .env file — set this as a real
+# Environment Variable in the Vercel project's Settings instead, pointed
+# at your deployed backend, e.g.:
+# VITE_API_URL=https://nyandarua-registry-backend.onrender.com
+VITE_API_URL=

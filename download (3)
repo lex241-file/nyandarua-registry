@@ -1,0 +1,7 @@
+# Render (and other PaaS platforms) set NODE_ENV=production during the
+# build step by default. Without this line, npm skips devDependencies
+# under NODE_ENV=production — but vite, typescript, and
+# @vitejs/plugin-react needed to build this frontend ARE devDependencies.
+# This forces them to install regardless of NODE_ENV, so `npm run build`
+# actually has `vite`/`tsc` available to run.
+production=false
