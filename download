@@ -1,7 +1,0 @@
-# Render (and other PaaS platforms) set NODE_ENV=production during the
-# build step by default. Without this line, npm skips devDependencies
-# under NODE_ENV=production — but typescript, ts-node-dev, and the
-# @types packages needed to build this backend ARE devDependencies.
-# This forces them to install regardless of NODE_ENV, so `npm run build`
-# actually has `tsc` available to run.
-production=false
