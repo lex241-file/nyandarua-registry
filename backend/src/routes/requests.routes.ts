@@ -74,7 +74,9 @@ router.get(
         sql += ' AND (r.requester_id = ? OR r.assigned_to_id = ?)';
         params.push(req.user!.sub, req.user!.sub);
       }
-      sql += ' ORDER BY r.created_at DESC LIMIT 500';
+      // Urgent requests bubble to the top of the queue (e.g. the pending
+      // approval list), oldest-first within each urgency tier.
+      sql += ' ORDER BY r.is_urgent DESC, r.created_at ASC LIMIT 500';
 
       const [rows] = await pool.query(sql, params);
       res.json({ requests: rows });
@@ -96,6 +98,8 @@ router.post(
   [
     body('fileIds').optional().isArray(),
     body('fileIds.*').optional().isInt({ min: 1 }),
+    body('urgentFileIds').optional().isArray(),
+    body('urgentFileIds.*').optional().isInt({ min: 1 }),
     body('confidentialFiles').optional().isArray(),
     body('confidentialFiles.*.fileNumber').optional().trim().isLength({ min: 1, max: 64 }),
     body('confidentialFiles.*.fileName').optional().trim().isLength({ min: 1, max: 255 }),
@@ -107,6 +111,7 @@ router.post(
     const conn = await pool.getConnection();
     try {
       const fileIds: number[] = req.body.fileIds || [];
+      const urgentFileIds: Set<number> = new Set(req.body.urgentFileIds || []);
       const confidentialFiles: { fileNumber: string; fileName: string }[] = req.body.confidentialFiles || [];
       const created: number[] = [];
       const skipped: number[] = [];
@@ -131,10 +136,11 @@ router.post(
           skipped.push(fileId);
           continue;
         }
+        const isUrgent = urgentFileIds.has(fileId);
         const [result] = await conn.query<any>(
-          `INSERT INTO requests (file_id, requester_id, status, requested_date)
-           VALUES (?, ?, 'pending', NOW())`,
-          [fileId, req.user!.sub]
+          `INSERT INTO requests (file_id, requester_id, status, requested_date, is_urgent)
+           VALUES (?, ?, 'pending', NOW(), ?)`,
+          [fileId, req.user!.sub, isUrgent ? 1 : 0]
         );
         const requestId = result.insertId;
         await conn.query(
@@ -356,6 +362,84 @@ router.post(
           actionFolio || null, lastFolio || null, reason || null,
           fileStatus || null, proceedToDest || null, bringUpNote || null,
         ]
+      );
+      await conn.commit();
+      res.json({ success: true });
+    } catch (err) {
+      await conn.rollback();
+      next(err);
+    } finally {
+      conn.release();
+    }
+  }
+);
+
+// Informal peer-to-peer handoff: the current holder passes an accepted
+// file directly to another active user. Deliberately does NOT write a
+// movements row — this is an off-the-record convenience handoff between
+// staff, not a formal registry action admin needs to see or approve.
+// The file simply starts showing up in the new holder's "My Files"
+// instead of the original holder's.
+router.post(
+  '/:id/forward',
+  requireAuth,
+  [param('id').isInt({ min: 1 }), body('toUserId').isInt({ min: 1 })],
+  handleValidation,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const requestId = Number(req.params.id);
+      const { toUserId } = req.body;
+
+      const [rows] = await pool.query<any[]>('SELECT * FROM requests WHERE id = ?', [requestId]);
+      const request = rows[0];
+      if (!request) return res.status(404).json({ error: 'Request not found' });
+      if (request.status !== 'accepted') {
+        return res.status(400).json({ error: 'Only a file currently with you can be forwarded' });
+      }
+      if (request.assigned_to_id !== req.user!.sub && req.user!.role !== 'admin') {
+        return res.status(403).json({ error: 'This file is not currently with you' });
+      }
+      const [targetRows] = await pool.query<any[]>('SELECT id FROM users WHERE id = ? AND is_active = 1', [toUserId]);
+      if (targetRows.length === 0) return res.status(404).json({ error: 'Selected user not found' });
+
+      await pool.query('UPDATE requests SET assigned_to_id = ? WHERE id = ?', [toUserId, requestId]);
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// The current holder pings admin that this file is ready to be
+// collected/returned. Unlike forward, this DOES get logged — it's a
+// message to admin, not an informal side-channel — but it doesn't
+// change the request's status; admin still marks it returned separately
+// once they've actually collected it.
+router.post(
+  '/:id/release',
+  requireAuth,
+  [param('id').isInt({ min: 1 })],
+  handleValidation,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const conn = await pool.getConnection();
+    try {
+      const requestId = Number(req.params.id);
+      const [rows] = await conn.query<any[]>('SELECT * FROM requests WHERE id = ?', [requestId]);
+      const request = rows[0];
+      if (!request) return res.status(404).json({ error: 'Request not found' });
+      if (request.status !== 'accepted') {
+        return res.status(400).json({ error: 'Only a file currently with you can be released' });
+      }
+      if (request.assigned_to_id !== req.user!.sub && req.user!.role !== 'admin') {
+        return res.status(403).json({ error: 'This file is not currently with you' });
+      }
+
+      await conn.beginTransaction();
+      await conn.query('UPDATE requests SET release_requested = 1 WHERE id = ?', [requestId]);
+      await conn.query(
+        `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id)
+         VALUES (?, ?, 'release', ?, ?)`,
+        [requestId, request.file_id, req.user!.sub, request.assigned_to_id]
       );
       await conn.commit();
       res.json({ success: true });

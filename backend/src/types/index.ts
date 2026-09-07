@@ -70,6 +70,8 @@ export interface RequestRow {
   requester_id: number | null;
   assigned_to_id: number | null;
   status: RequestStatus;
+  is_urgent: number;
+  release_requested: number;
   requested_date: string | null;
   assigned_date: string | null;
   accepted_date: string | null;
@@ -88,12 +90,12 @@ export interface RequestRow {
 }
 
 export type MovementAction =
-  | 'requested'
+  | 'pending'
   | 'pending_accept'
   | 'accepted'
   | 'returned'
   | 'rejected_auto'
-  | 'reassigned';
+  | 'release';
 
 export interface MovementRow {
   id: number;

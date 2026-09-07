@@ -294,6 +294,7 @@ export default function AdminHome() {
                   <div key={r.id} className="assign-row">
                     <div style={{ flex: 1 }}>
                       <strong>{r.file_name}</strong> <span style={{ color: '#888' }}>{r.file_number_label}</span>
+                      {!!r.is_urgent && <span className="tag tag-red" style={{ marginLeft: 6 }}>URGENT</span>}
                       <div style={{ fontSize: 11 }}>Requested by: <strong>{r.requester_name}</strong> on {r.requested_date ? new Date(r.requested_date).toLocaleDateString('en-KE') : '—'}</div>
                       <div className="assign-fields">
                         <div><label>Registry Code</label><input type="text" value={f.registryCode} onChange={(e) => updateApproveFields(r.id, { registryCode: e.target.value })} /></div>
@@ -391,6 +392,7 @@ export default function AdminHome() {
                             <span className={`tag ${r.status === 'accepted' ? 'tag-green' : 'tag-amber'}`} style={{ display: 'block', marginBottom: 4 }}>
                               {r.status === 'accepted' ? 'Accepted' : 'Pending'}
                             </span>
+                            {!!r.release_requested && <span className="tag tag-gold" style={{ display: 'block', marginBottom: 4 }}>Release requested</span>}
                             <button className="btn btn-danger btn-sm" onClick={() => returnFile(r.id)}>↩ Return</button>
                           </td>
                         </tr>

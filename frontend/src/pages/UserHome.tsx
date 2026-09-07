@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import RegistryFilesBrowser from '../components/RegistryFilesBrowser';
 import SearchCard from '../components/SearchCard';
 import SelectedFilesPanel, { ConfidentialEntry } from '../components/SelectedFilesPanel';
-import { RegistryFile, RegistryRequest } from '../types';
+import { RegistryFile, RegistryRequest, UserDirectoryEntry } from '../types';
 
 export default function UserHome() {
   const { user } = useAuth();
@@ -15,6 +15,8 @@ export default function UserHome() {
 
   const [myRequests, setMyRequests] = useState<RegistryRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [directory, setDirectory] = useState<UserDirectoryEntry[]>([]);
+  const [forwardOpenFor, setForwardOpenFor] = useState<number | null>(null);
 
   async function loadMyRequests() {
     setLoading(true);
@@ -28,6 +30,7 @@ export default function UserHome() {
 
   useEffect(() => {
     loadMyRequests();
+    api.get<{ users: UserDirectoryEntry[] }>('/users/directory').then((res) => setDirectory(res.users));
   }, []);
 
   function mergeFiles(files: RegistryFile[]) {
@@ -69,6 +72,29 @@ export default function UserHome() {
       loadMyRequests();
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Could not re-request file.');
+    }
+  }
+
+  async function forwardFile(id: number, toUserId: number) {
+    setMsg('');
+    try {
+      await api.post(`/requests/${id}/forward`, { toUserId });
+      setMsg('File forwarded.');
+      setForwardOpenFor(null);
+      loadMyRequests();
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Could not forward file.');
+    }
+  }
+
+  async function releaseFile(id: number) {
+    setMsg('');
+    try {
+      await api.post(`/requests/${id}/release`);
+      setMsg('Admin has been notified to collect this file.');
+      loadMyRequests();
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Could not send release notice.');
     }
   }
 
@@ -114,6 +140,7 @@ export default function UserHome() {
             selectedIds={selected}
             confidential={confidential}
             onClearSelection={() => setSelected(new Set())}
+            onUnselectOne={(fileId) => toggleSelect(fileId)}
             onClearConfidential={() => setConfidential([])}
             onDone={(m) => { setMsg(m); loadMyRequests(); }}
           />
@@ -155,7 +182,7 @@ export default function UserHome() {
                   <thead>
                     <tr>
                       <th>Date Assigned</th><th>File Number</th><th>File Name</th><th>Registry Code</th>
-                      <th>Action Folio</th><th>Reason</th><th>Due Date</th><th>Action</th>
+                      <th>Action Folio</th><th>Reason</th><th>Due Date</th><th>Status</th><th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -173,10 +200,37 @@ export default function UserHome() {
                             {r.due_date ? new Date(r.due_date).toLocaleDateString('en-KE') : '—'}
                           </td>
                           <td>
-                            {overdue ? (
-                              <button className="btn btn-warn btn-sm" onClick={() => requestAgain(r.id)}>↺ Request Again</button>
-                            ) : (
-                              <span className="tag tag-green">Active</span>
+                            {overdue ? <span className="tag tag-red">Overdue</span> : <span className="tag tag-green">Active</span>}
+                            {!!r.release_requested && <span className="tag tag-amber" style={{ marginLeft: 4 }}>Release sent</span>}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              {overdue && (
+                                <button className="btn btn-warn btn-sm" onClick={() => requestAgain(r.id)}>Request Again</button>
+                              )}
+                              <button className="btn btn-sm" onClick={() => setForwardOpenFor(forwardOpenFor === r.id ? null : r.id)}>Forward</button>
+                              <button
+                                className="btn btn-sm btn-gold"
+                                disabled={!!r.release_requested}
+                                onClick={() => releaseFile(r.id)}
+                              >
+                                {r.release_requested ? 'Released' : 'Release'}
+                              </button>
+                            </div>
+                            {forwardOpenFor === r.id && (
+                              <select
+                                autoFocus
+                                defaultValue=""
+                                style={{ marginTop: 4, minWidth: 180 }}
+                                onChange={(e) => {
+                                  if (e.target.value) forwardFile(r.id, Number(e.target.value));
+                                }}
+                              >
+                                <option value="" disabled>Forward to…</option>
+                                {directory.filter((u) => u.id !== user?.id).map((u) => (
+                                  <option key={u.id} value={u.id}>{u.name} ({u.file_number})</option>
+                                ))}
+                              </select>
                             )}
                           </td>
                         </tr>

@@ -92,6 +92,8 @@ export interface RegistryRequest {
   assigned_to_id: number | null;
   assigned_to_name: string | null;
   status: RequestStatus;
+  is_urgent: number;
+  release_requested: number;
   requested_date: string | null;
   assigned_date: string | null;
   accepted_date: string | null;

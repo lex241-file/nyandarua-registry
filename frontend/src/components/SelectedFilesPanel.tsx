@@ -12,21 +12,24 @@ interface RowMeta {
   actionFolio: string;
   reason: string;
   assignedToId?: number;
+  urgent?: boolean;
 }
 
 interface Props {
   role: 'user' | 'admin';
-  files: RegistryFile[]; // full list currently loaded (for looking up name/number of selected ids)
+  files: RegistryFile[];
   selectedIds: Set<number>;
   confidential: ConfidentialEntry[];
-  allUsers?: UserDirectoryEntry[]; // admin only — same list as Manage Files & Users, for the Assign To dropdown
+  allUsers?: UserDirectoryEntry[];
   onClearSelection: () => void;
+  onUnselectOne?: (fileId: number) => void;
   onClearConfidential: () => void;
   onDone: (message: string) => void;
 }
 
 export default function SelectedFilesPanel({
-  role, files, selectedIds, confidential, allUsers = [], onClearSelection, onClearConfidential, onDone,
+  role, files, selectedIds, confidential, allUsers = [],
+  onClearSelection, onUnselectOne, onClearConfidential, onDone,
 }: Props) {
   const [rowMeta, setRowMeta] = useState<Record<string, RowMeta>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -35,7 +38,7 @@ export default function SelectedFilesPanel({
   const totalCount = selectedFiles.length + confidential.length;
 
   function getMeta(key: string): RowMeta {
-    return rowMeta[key] || { registryCode: '', actionFolio: '', reason: '' };
+    return rowMeta[key] || { registryCode: '', actionFolio: '', reason: '', urgent: false };
   }
   function updateMeta(key: string, patch: Partial<RowMeta>) {
     setRowMeta((prev) => ({ ...prev, [key]: { ...getMeta(key), ...patch } }));
@@ -44,7 +47,7 @@ export default function SelectedFilesPanel({
   if (totalCount === 0) {
     return (
       <div className="card">
-        <div className="card-title">✓ Selected Files <span className="tag tag-blue" style={{ marginLeft: 'auto' }}>0 selected</span></div>
+        <div className="card-title">Selected Files <span className="tag tag-blue" style={{ marginLeft: 'auto' }}>0 selected</span></div>
         <p style={{ fontSize: 12, color: '#888' }}>No files selected. Select files from the panel or search results.</p>
       </div>
     );
@@ -53,8 +56,10 @@ export default function SelectedFilesPanel({
   async function submitAsUser() {
     setSubmitting(true);
     try {
+      const urgentFileIds = selectedFiles.filter((f) => getMeta(String(f.id)).urgent).map((f) => f.id);
       const res = await api.post<{ created: number[]; skipped: number[] }>('/requests', {
         fileIds: selectedFiles.map((f) => f.id),
+        urgentFileIds,
         confidentialFiles: confidential,
       });
       const parts: string[] = [];
@@ -104,7 +109,7 @@ export default function SelectedFilesPanel({
 
   return (
     <div className="card">
-      <div className="card-title">✓ Selected Files <span className="tag tag-blue" style={{ marginLeft: 'auto' }}>{totalCount} selected</span></div>
+      <div className="card-title">Selected Files <span className="tag tag-blue" style={{ marginLeft: 'auto' }}>{totalCount} selected</span></div>
       <div style={{ overflowX: 'auto' }}>
         <table className="reg-table">
           <thead>
@@ -112,10 +117,12 @@ export default function SelectedFilesPanel({
               <th>#</th>
               <th>File Number</th>
               <th>File Name</th>
-              <th>Registry Code</th>
-              <th>Action Folio</th>
+              {role === 'admin' && <th>Registry Code</th>}
+              {role === 'admin' && <th>Action Folio</th>}
               <th>Reason</th>
               {role === 'admin' && <th>Assign To</th>}
+              {role === 'user' && <th>Urgent</th>}
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -127,8 +134,12 @@ export default function SelectedFilesPanel({
                   <td>{i + 1}</td>
                   <td style={{ fontWeight: 700 }}>{f.file_number}</td>
                   <td>{f.file_name}</td>
-                  <td><input type="text" value={meta.registryCode} onChange={(e) => updateMeta(key, { registryCode: e.target.value })} style={{ minWidth: 100 }} /></td>
-                  <td><input type="text" value={meta.actionFolio} onChange={(e) => updateMeta(key, { actionFolio: e.target.value })} style={{ minWidth: 100 }} /></td>
+                  {role === 'admin' && (
+                    <td><input type="text" value={meta.registryCode} onChange={(e) => updateMeta(key, { registryCode: e.target.value })} style={{ minWidth: 100 }} /></td>
+                  )}
+                  {role === 'admin' && (
+                    <td><input type="text" value={meta.actionFolio} onChange={(e) => updateMeta(key, { actionFolio: e.target.value })} style={{ minWidth: 100 }} /></td>
+                  )}
                   <td><input type="text" value={meta.reason} onChange={(e) => updateMeta(key, { reason: e.target.value })} style={{ minWidth: 120 }} /></td>
                   {role === 'admin' && (
                     <td>
@@ -137,13 +148,27 @@ export default function SelectedFilesPanel({
                         onChange={(e) => updateMeta(key, { assignedToId: e.target.value ? Number(e.target.value) : undefined })}
                         style={{ minWidth: 160 }}
                       >
-                        <option value="">— Choose user —</option>
+                        <option value="">Choose user</option>
                         {allUsers.map((u) => (
                           <option key={u.id} value={u.id}>{u.name} ({u.file_number})</option>
                         ))}
                       </select>
                     </td>
                   )}
+                  {role === 'user' && (
+                    <td>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${meta.urgent ? 'btn-danger' : ''}`}
+                        onClick={() => updateMeta(key, { urgent: !meta.urgent })}
+                      >
+                        {meta.urgent ? 'Urgent' : 'Mark Urgent'}
+                      </button>
+                    </td>
+                  )}
+                  <td>
+                    <button type="button" className="btn btn-sm" onClick={() => onUnselectOne?.(f.id)}>Unselect</button>
+                  </td>
                 </tr>
               );
             })}
@@ -152,7 +177,7 @@ export default function SelectedFilesPanel({
                 <td>{selectedFiles.length + i + 1}</td>
                 <td style={{ fontWeight: 700 }}>{c.fileNumber}</td>
                 <td>{c.fileName} <span className="tag tag-red" style={{ marginLeft: 4 }}>Confidential</span></td>
-                <td colSpan={role === 'admin' ? 4 : 2} style={{ color: '#888', fontSize: 11 }}>New confidential file — will be created on submit</td>
+                <td colSpan={role === 'admin' ? 4 : 2} style={{ color: '#888', fontSize: 11 }}>New confidential file, will be created on submit</td>
               </tr>
             ))}
           </tbody>
@@ -161,12 +186,12 @@ export default function SelectedFilesPanel({
 
       {role === 'user' && (
         <button className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={submitting} onClick={submitAsUser}>
-          {submitting ? 'Submitting…' : `📤 Request ${totalCount} File(s)`}
+          {submitting ? 'Submitting...' : `Request ${totalCount} File(s)`}
         </button>
       )}
       {role === 'admin' && (
         <button className="btn btn-success" style={{ width: '100%', marginTop: 8 }} disabled={submitting || selectedFiles.length === 0} onClick={submitAsAdmin}>
-          {submitting ? 'Assigning…' : `✓✓ Assign All Selected`}
+          {submitting ? 'Assigning...' : 'Assign All Selected'}
         </button>
       )}
     </div>
