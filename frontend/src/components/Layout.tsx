@@ -28,7 +28,7 @@ export default function Layout() {
       }
     }
     loadNotifs();
-    const interval = setInterval(loadNotifs, 60000); // refresh every minute
+    const interval = setInterval(loadNotifs, 15000); // refresh every 15s
     return () => {
       cancelled = true;
       clearInterval(interval);

@@ -37,9 +37,13 @@ export default function Manage() {
   const [allFiles, setAllFiles] = useState<RegistryFile[]>([]);
   const [fileSearch, setFileSearch] = useState('');
   const [filesLoading, setFilesLoading] = useState(true);
+  const [hasLoadedUsersOnce, setHasLoadedUsersOnce] = useState(false);
+  const [hasLoadedFilesOnce, setHasLoadedFilesOnce] = useState(false);
 
   async function load() {
-    setLoading(true);
+    // Only block-render "Loading…" on first mount — subsequent reloads
+    // after add/edit/remove actions update quietly instead of flashing.
+    if (!hasLoadedUsersOnce) setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
@@ -53,11 +57,12 @@ export default function Manage() {
       setStats(statsRes);
     } finally {
       setLoading(false);
+      setHasLoadedUsersOnce(true);
     }
   }
 
   async function loadFiles() {
-    setFilesLoading(true);
+    if (!hasLoadedFilesOnce) setFilesLoading(true);
     try {
       const params = new URLSearchParams();
       if (fileSearch) params.set('search', fileSearch);
@@ -65,6 +70,7 @@ export default function Manage() {
       setAllFiles(res.files);
     } finally {
       setFilesLoading(false);
+      setHasLoadedFilesOnce(true);
     }
   }
 

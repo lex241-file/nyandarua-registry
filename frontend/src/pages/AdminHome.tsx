@@ -23,12 +23,17 @@ export default function AdminHome() {
   const [assigned, setAssigned] = useState<RegistryRequest[]>([]);
   const [assignedSearch, setAssignedSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   // Per-pending-request inline approve fields.
   const [approveFields, setApproveFields] = useState<Record<number, { registryCode: string; folio: string; reason: string; assignTo: number | null }>>({});
 
   async function loadAll() {
-    setLoading(true);
+    // Only show the blocking "Loading…" state on the very first load.
+    // Refreshing after an action (accept/assign/return/etc.) or on the
+    // background poll should update data quietly, without blanking the
+    // whole page and flashing back — that flash is what "blinking" was.
+    if (!hasLoadedOnce) setLoading(true);
     try {
       const [pendingRes, rejectedRes, acceptedRes, pendingAcceptRes, statsRes, filesRes, usersRes] = await Promise.all([
         api.get<{ requests: RegistryRequest[] }>('/requests?status=pending'),
@@ -50,11 +55,17 @@ export default function AdminHome() {
       setAllUsers(usersRes.users);
     } finally {
       setLoading(false);
+      setHasLoadedOnce(true);
     }
   }
 
   useEffect(() => {
     loadAll();
+    // Poll in the background so new requests/assignments from other users
+    // show up here without needing a manual page refresh.
+    const interval = setInterval(loadAll, 20000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function mergeFiles(files: RegistryFile[]) {

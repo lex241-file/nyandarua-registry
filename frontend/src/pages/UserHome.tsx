@@ -15,22 +15,32 @@ export default function UserHome() {
 
   const [myRequests, setMyRequests] = useState<RegistryRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [directory, setDirectory] = useState<UserDirectoryEntry[]>([]);
   const [forwardOpenFor, setForwardOpenFor] = useState<number | null>(null);
 
   async function loadMyRequests() {
-    setLoading(true);
+    // Same reasoning as AdminHome: only block-load on the first mount.
+    // Background/action-triggered refreshes update quietly instead of
+    // flashing the page to "Loading…" and back.
+    if (!hasLoadedOnce) setLoading(true);
     try {
       const res = await api.get<{ requests: RegistryRequest[] }>('/requests?mine=true');
       setMyRequests(res.requests);
     } finally {
       setLoading(false);
+      setHasLoadedOnce(true);
     }
   }
 
   useEffect(() => {
     loadMyRequests();
     api.get<{ users: UserDirectoryEntry[] }>('/users/directory').then((res) => setDirectory(res.users));
+    // Poll so pending_accept/accepted status changes made by an admin
+    // (or a peer's Forward) show up here without a manual refresh.
+    const interval = setInterval(loadMyRequests, 20000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function mergeFiles(files: RegistryFile[]) {
