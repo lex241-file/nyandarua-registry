@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { RegistryFile } from '../types';
 
@@ -13,31 +13,32 @@ export default function SearchCard({ selected, onToggle, onResults }: Props) {
   const [results, setResults] = useState<RegistryFile[]>([]);
   const [searched, setSearched] = useState(false);
 
-  async function handleSearch(e: FormEvent) {
-    e.preventDefault();
-    if (!query.trim()) {
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
       setResults([]);
       setSearched(false);
       return;
     }
-    const res = await api.get<{ files: RegistryFile[] }>(`/files?search=${encodeURIComponent(query)}`);
-    setResults(res.files);
-    setSearched(true);
-    onResults(res.files);
-  }
+    const handle = setTimeout(async () => {
+      const res = await api.get<{ files: RegistryFile[] }>(`/files?search=${encodeURIComponent(trimmed)}`);
+      setResults(res.files);
+      setSearched(true);
+      onResults(res.files);
+    }, 300);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   return (
     <div className="card">
-      <div className="card-title">🔍 Search Files</div>
-      <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8 }}>
-        <input
-          type="text"
-          placeholder="Search by file name, number, or designation…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <button className="btn btn-primary btn-sm" type="submit">🔍 Search</button>
-      </form>
+      <div className="card-title">Search Files</div>
+      <input
+        type="text"
+        placeholder="Search by file number, name, or designation..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
       <div style={{ marginTop: 8 }}>
         {!searched ? (
           <p style={{ fontSize: 12, color: '#888' }}>Start typing to see matching files.</p>

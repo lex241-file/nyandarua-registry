@@ -100,6 +100,7 @@ router.post(
     body('fileIds.*').optional().isInt({ min: 1 }),
     body('urgentFileIds').optional().isArray(),
     body('urgentFileIds.*').optional().isInt({ min: 1 }),
+    body('reasons').optional().isObject(),
     body('confidentialFiles').optional().isArray(),
     body('confidentialFiles.*.fileNumber').optional().trim().isLength({ min: 1, max: 64 }),
     body('confidentialFiles.*.fileName').optional().trim().isLength({ min: 1, max: 255 }),
@@ -112,6 +113,11 @@ router.post(
     try {
       const fileIds: number[] = req.body.fileIds || [];
       const urgentFileIds: Set<number> = new Set(req.body.urgentFileIds || []);
+      // Keyed by fileId (as a string, since JSON object keys are always
+      // strings) — the reason the requester typed in for that specific
+      // file, carried straight onto the request row so it shows up
+      // automatically on the admin side without them retyping it.
+      const reasons: Record<string, string> = req.body.reasons || {};
       const confidentialFiles: { fileNumber: string; fileName: string }[] = req.body.confidentialFiles || [];
       const created: number[] = [];
       const skipped: number[] = [];
@@ -137,16 +143,17 @@ router.post(
           continue;
         }
         const isUrgent = urgentFileIds.has(fileId);
+        const reason = reasons[String(fileId)] || null;
         const [result] = await conn.query<any>(
-          `INSERT INTO requests (file_id, requester_id, status, requested_date, is_urgent)
-           VALUES (?, ?, 'pending', NOW(), ?)`,
-          [fileId, req.user!.sub, isUrgent ? 1 : 0]
+          `INSERT INTO requests (file_id, requester_id, status, requested_date, is_urgent, reason)
+           VALUES (?, ?, 'pending', NOW(), ?, ?)`,
+          [fileId, req.user!.sub, isUrgent ? 1 : 0, reason]
         );
         const requestId = result.insertId;
         await conn.query(
-          `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id)
-           VALUES (?, ?, 'pending', ?, ?)`,
-          [requestId, fileId, req.user!.sub, req.user!.sub]
+          `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id, reason)
+           VALUES (?, ?, 'pending', ?, ?, ?)`,
+          [requestId, fileId, req.user!.sub, req.user!.sub, reason]
         );
         created.push(requestId);
       }
@@ -223,12 +230,14 @@ router.post(
     body('assignedToId').isInt({ min: 1 }),
     body('requestId').optional().isInt({ min: 1 }),
     body('registryCode').optional().trim().isLength({ max: 100 }),
+    body('actionFolio').optional().trim().isLength({ max: 100 }),
+    body('reason').optional().trim().isLength({ max: 2000 }),
   ],
   handleValidation,
   async (req: Request, res: Response, next: NextFunction) => {
     const conn = await pool.getConnection();
     try {
-      const { fileId, assignedToId, requestId, registryCode } = req.body;
+      const { fileId, assignedToId, requestId, registryCode, actionFolio, reason } = req.body;
 
       const [userRows] = await conn.query<any[]>('SELECT role FROM users WHERE id = ?', [assignedToId]);
       if (userRows.length === 0) return res.status(404).json({ error: 'Assignee not found' });
@@ -241,23 +250,25 @@ router.post(
       if (requestId) {
         await conn.query(
           `UPDATE requests SET status = 'pending_accept', assigned_to_id = ?, assigned_date = NOW(),
-             due_date = ?, registry_code = COALESCE(?, registry_code) WHERE id = ?`,
-          [assignedToId, dueDate, registryCode || null, requestId]
+             due_date = ?, registry_code = COALESCE(?, registry_code),
+             action_folio = COALESCE(?, action_folio), reason = COALESCE(?, reason)
+           WHERE id = ?`,
+          [assignedToId, dueDate, registryCode || null, actionFolio || null, reason || null, requestId]
         );
         finalRequestId = requestId;
       } else {
         const [result] = await conn.query<any>(
-          `INSERT INTO requests (file_id, assigned_to_id, status, assigned_date, due_date, registry_code)
-           VALUES (?, ?, 'pending_accept', NOW(), ?, ?)`,
-          [fileId, assignedToId, dueDate, registryCode || null]
+          `INSERT INTO requests (file_id, assigned_to_id, status, assigned_date, due_date, registry_code, action_folio, reason)
+           VALUES (?, ?, 'pending_accept', NOW(), ?, ?, ?, ?)`,
+          [fileId, assignedToId, dueDate, registryCode || null, actionFolio || null, reason || null]
         );
         finalRequestId = result.insertId;
       }
 
       await conn.query(
-        `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id, registry_code)
-         VALUES (?, ?, 'pending_accept', ?, ?, ?)`,
-        [finalRequestId, fileId, req.user!.sub, assignedToId, registryCode || null]
+        `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id, registry_code, action_folio, reason)
+         VALUES (?, ?, 'pending_accept', ?, ?, ?, ?, ?)`,
+        [finalRequestId, fileId, req.user!.sub, assignedToId, registryCode || null, actionFolio || null, reason || null]
       );
       await conn.commit();
       res.status(201).json({ success: true, requestId: finalRequestId, dueDate });

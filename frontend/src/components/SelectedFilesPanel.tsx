@@ -57,9 +57,15 @@ export default function SelectedFilesPanel({
     setSubmitting(true);
     try {
       const urgentFileIds = selectedFiles.filter((f) => getMeta(String(f.id)).urgent).map((f) => f.id);
+      const reasons: Record<number, string> = {};
+      selectedFiles.forEach((f) => {
+        const r = getMeta(String(f.id)).reason;
+        if (r) reasons[f.id] = r;
+      });
       const res = await api.post<{ created: number[]; skipped: number[] }>('/requests', {
         fileIds: selectedFiles.map((f) => f.id),
         urgentFileIds,
+        reasons,
         confidentialFiles: confidential,
       });
       const parts: string[] = [];
@@ -89,6 +95,8 @@ export default function SelectedFilesPanel({
             fileId: f.id,
             assignedToId: meta.assignedToId,
             registryCode: meta.registryCode || undefined,
+            actionFolio: meta.actionFolio || undefined,
+            reason: meta.reason || undefined,
           });
           ok++;
         } catch {

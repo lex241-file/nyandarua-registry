@@ -35,7 +35,11 @@ export default function UserHome() {
 
   useEffect(() => {
     loadMyRequests();
-    api.get<{ users: UserDirectoryEntry[] }>('/users/directory').then((res) => setDirectory(res.users));
+    // Forward dropdown must strictly list regular staff (role 'user')
+    // only — never admins or special accounts.
+    api.get<{ users: UserDirectoryEntry[] }>('/users/directory').then((res) =>
+      setDirectory(res.users.filter((u) => u.role === 'user'))
+    );
     // Poll so pending_accept/accepted status changes made by an admin
     // (or a peer's Forward) show up here without a manual refresh.
     const interval = setInterval(loadMyRequests, 20000);
@@ -173,6 +177,9 @@ export default function UserHome() {
                       {r.file_number_label} | Assigned: {r.assigned_date ? new Date(r.assigned_date).toLocaleDateString('en-KE') : '—'}
                     </div>
                     {r.registry_code && <div style={{ fontSize: 11 }}>Registry Code: <strong>{r.registry_code}</strong></div>}
+                    {r.action_folio && <div style={{ fontSize: 11 }}>Action Folio: <strong>{r.action_folio}</strong></div>}
+                    {r.last_folio && <div style={{ fontSize: 11 }}>Last Folio: <strong>{r.last_folio}</strong></div>}
+                    {r.reason && <div style={{ fontSize: 11 }}>Reason: <strong>{r.reason}</strong></div>}
                   </div>
                   <button className="btn btn-sm btn-success" onClick={() => acceptFile(r.id)}>✓ Accept</button>
                 </div>
@@ -192,7 +199,7 @@ export default function UserHome() {
                   <thead>
                     <tr>
                       <th>Date Assigned</th><th>File Number</th><th>File Name</th><th>Registry Code</th>
-                      <th>Action Folio</th><th>Reason</th><th>Due Date</th><th>Status</th><th>Action</th>
+                      <th>Action Folio</th><th>Last Folio</th><th>Reason</th><th>Due Date</th><th>Status</th><th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -205,6 +212,7 @@ export default function UserHome() {
                           <td>{r.file_name}</td>
                           <td>{r.registry_code || '—'}</td>
                           <td>{r.action_folio || '—'}</td>
+                          <td>{r.last_folio || '—'}</td>
                           <td>{r.reason || '—'}</td>
                           <td style={{ color: overdue ? '#c0392b' : '#27ae60', fontWeight: 700 }}>
                             {r.due_date ? new Date(r.due_date).toLocaleDateString('en-KE') : '—'}

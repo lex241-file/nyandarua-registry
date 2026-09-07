@@ -24,6 +24,8 @@ export default function Manage() {
   const [bulkFileCategory, setBulkFileCategory] = useState<SubCategory | ''>('');
 
   const [editingUser, setEditingUser] = useState<SafeUser | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editIdNumber, setEditIdNumber] = useState('');
   const [editDesignation, setEditDesignation] = useState('');
   const [editRole, setEditRole] = useState<Role>('user');
   const [editFileCategory, setEditFileCategory] = useState<SubCategory>('personal');
@@ -171,6 +173,8 @@ export default function Manage() {
 
   function openEdit(u: SafeUser) {
     setEditingUser(u);
+    setEditName(u.name);
+    setEditIdNumber(u.id_number || '');
     setEditDesignation(u.designation);
     setEditRole(u.role);
     setEditFileCategory(u.file_category);
@@ -180,13 +184,14 @@ export default function Manage() {
     if (!editingUser) return;
     setMsg('');
     try {
-      await api.patch('/users/bulk', {
-        fileNumbers: [editingUser.file_number],
+      await api.patch(`/users/${encodeURIComponent(editingUser.file_number)}`, {
+        name: editName || undefined,
+        idNumber: editIdNumber,
         designation: editDesignation || undefined,
         role: editRole,
         fileCategory: editFileCategory,
       });
-      setMsg(`${editingUser.name} updated.`);
+      setMsg(`${editName || editingUser.name} updated.`);
       setEditingUser(null);
       load();
     } catch (err) {
@@ -332,6 +337,16 @@ export default function Manage() {
           {editingUser && (
             <form onSubmit={submitEdit} className="card" style={{ marginBottom: 10, background: '#f7f9fc' }}>
               <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Edit {editingUser.name}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700 }}>Full Name</label>
+                  <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700 }}>ID Number (used as default password)</label>
+                  <input type="text" value={editIdNumber} onChange={(e) => setEditIdNumber(e.target.value)} />
+                </div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700 }}>Designation</label>
@@ -358,6 +373,9 @@ export default function Manage() {
                   <button className="btn btn-sm" type="button" onClick={() => setEditingUser(null)}>Cancel</button>
                 </div>
               </div>
+              <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
+                Changing the ID number only affects future password resets — it does not change this person's current login password.
+              </p>
             </form>
           )}
 

@@ -52,7 +52,9 @@ export default function AdminHome() {
       setAssigned([...pendingAcceptRes.requests, ...acceptedRes.requests]);
       setStats(statsRes);
       setAllRegistryFiles(filesRes.files);
-      setAllUsers(usersRes.users);
+      // Assign/Forward dropdowns must strictly list regular staff (role
+      // 'user') only — never admins or special (no-login) accounts.
+      setAllUsers(usersRes.users.filter((u) => u.role === 'user'));
     } finally {
       setLoading(false);
       setHasLoadedOnce(true);
@@ -85,15 +87,21 @@ export default function AdminHome() {
     });
   }
 
-  function getApproveFields(id: number) {
-    return approveFields[id] || { registryCode: '', folio: '', reason: '', assignTo: null };
+  // Defaults the reason field to whatever the requester already typed in
+  // (r.reason, saved at request-creation time) so it shows up here
+  // automatically instead of the admin having to ask/retype it — that's
+  // only used the FIRST time this request's fields are touched; once the
+  // admin edits it locally, their edit takes over.
+  function getApproveFields(r: RegistryRequest) {
+    return approveFields[r.id] || { registryCode: '', folio: '', reason: r.reason || '', assignTo: null };
   }
-  function updateApproveFields(id: number, patch: Partial<ReturnType<typeof getApproveFields>>) {
-    setApproveFields((prev) => ({ ...prev, [id]: { ...getApproveFields(id), ...patch } }));
+  function updateApproveFields(id: number, patch: Partial<{ registryCode: string; folio: string; reason: string; assignTo: number | null }>) {
+    const current = approveFields[id] || { registryCode: '', folio: '', reason: '', assignTo: null };
+    setApproveFields((prev) => ({ ...prev, [id]: { ...current, ...patch } }));
   }
 
   async function approveRequest(r: RegistryRequest) {
-    const fields = getApproveFields(r.id);
+    const fields = getApproveFields(r);
     const assignedToId = fields.assignTo ?? r.requester_id;
     if (!assignedToId) {
       setMsg('Choose who to assign this file to.');
@@ -106,6 +114,8 @@ export default function AdminHome() {
         fileId: r.file_id,
         assignedToId,
         registryCode: fields.registryCode || undefined,
+        actionFolio: fields.folio || undefined,
+        reason: fields.reason || undefined,
       });
       setMsg('Request approved and assigned.');
       loadAll();
@@ -290,6 +300,7 @@ export default function AdminHome() {
             confidential={[]}
             allUsers={allUsers}
             onClearSelection={() => setSelected(new Set())}
+            onUnselectOne={(fileId) => toggleSelect(fileId)}
             onClearConfidential={() => {}}
             onDone={(m) => { setMsg(m); loadAll(); }}
           />
@@ -300,7 +311,7 @@ export default function AdminHome() {
               <p style={{ fontSize: 12, color: '#888' }}>No pending file requests.</p>
             ) : (
               pending.map((r) => {
-                const f = getApproveFields(r.id);
+                const f = getApproveFields(r);
                 return (
                   <div key={r.id} className="assign-row">
                     <div style={{ flex: 1 }}>

@@ -36,6 +36,7 @@ router.get(
             WHERE r.file_id = f.id AND r.status IN ('pending_accept','accepted')
           ) AS is_unavailable
         FROM registry_files f
+        LEFT JOIN users owner ON owner.id = f.owner_user_id
         WHERE 1=1
       `;
       const params: any[] = [];
@@ -53,9 +54,13 @@ router.get(
         }
       }
       if (search) {
-        sql += ' AND (f.file_name LIKE ? OR f.file_number LIKE ? OR f.file_id LIKE ?)';
+        // Matches file name, file number, or — for personal files — the
+        // owning staff member's designation (e.g. searching "Medical
+        // officer" finds every personal file belonging to someone with
+        // that designation).
+        sql += ' AND (f.file_name LIKE ? OR f.file_number LIKE ? OR f.file_id LIKE ? OR owner.designation LIKE ?)';
         const like = `%${search}%`;
-        params.push(like, like, like);
+        params.push(like, like, like, like);
       }
       sql += ' ORDER BY f.file_name ASC LIMIT 1000';
 

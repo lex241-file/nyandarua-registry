@@ -150,6 +150,56 @@ router.patch(
   }
 );
 
+// Single-user edit — supports name and ID number, which don't make
+// sense as bulk fields (each person's name/ID is unique, unlike
+// designation/role/fileCategory which are reasonably shared across many
+// accounts at once via /bulk above).
+router.patch(
+  '/:fileNumber',
+  requireAuth,
+  requireRole('admin'),
+  [
+    param('fileNumber').trim().notEmpty(),
+    body('name').optional().trim().isLength({ min: 1, max: 255 }),
+    body('idNumber').optional({ nullable: true }).trim().isLength({ max: 64 }),
+    body('designation').optional().trim().isLength({ max: 255 }),
+    body('role').optional().isIn(['admin', 'user', 'special']),
+    body('fileCategory').optional().isIn(SUB_CATEGORIES),
+  ],
+  handleValidation,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { name, idNumber, designation, role, fileCategory } = req.body as {
+        name?: string;
+        idNumber?: string | null;
+        designation?: string;
+        role?: string;
+        fileCategory?: string;
+      };
+      if (name === undefined && idNumber === undefined && !designation && !role && !fileCategory) {
+        return res.status(400).json({ error: 'Nothing to update' });
+      }
+
+      const sets: string[] = [];
+      const params: any[] = [];
+      if (name) { sets.push('name = ?'); params.push(name); }
+      if (idNumber !== undefined) { sets.push('id_number = ?'); params.push(idNumber || null); }
+      if (designation) { sets.push('designation = ?'); params.push(designation); }
+      if (role) { sets.push('role = ?'); params.push(role); }
+      if (fileCategory) { sets.push('file_category = ?'); params.push(fileCategory); }
+
+      const [result] = await pool.query<any>(
+        `UPDATE users SET ${sets.join(', ')} WHERE file_number = ?`,
+        [...params, req.params.fileNumber]
+      );
+      if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
+      res.json({ success: true });
+    } catch (err: any) {
+      next(err);
+    }
+  }
+);
+
 // Bulk deactivate — admin only. Same soft-delete semantics as the
 // single-user deactivate route, just applied to several accounts at once.
 router.post(
