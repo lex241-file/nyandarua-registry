@@ -12,10 +12,20 @@ export function signToken(payload: AuthTokenPayload): string {
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  // Plain <a href="..."> download navigations (used for note attachments)
+  // can't set a custom Authorization header, so this one accepts the
+  // token as a ?token= query param as a fallback. Only relied on for
+  // that read-only download route — every state-changing request still
+  // goes through the header. Tokens in URLs can end up in server logs,
+  // which is an acceptable tradeoff here for a simple internal document
+  // download feature, but worth knowing if this pattern gets reused
+  // elsewhere later.
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : queryToken;
+
+  if (!token) {
     return res.status(401).json({ error: 'Missing or invalid Authorization header' });
   }
-  const token = header.slice('Bearer '.length);
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as unknown as AuthTokenPayload;
     req.user = decoded;

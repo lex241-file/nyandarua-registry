@@ -7,6 +7,7 @@ export interface UserRow {
   designation: string;
   id_number: string | null;
   role: Role;
+  file_category: SubCategory;
   password_hash: string;
   must_change_password: number;
   is_active: number;
@@ -16,7 +17,24 @@ export interface UserRow {
 
 export type SafeUser = Omit<UserRow, 'password_hash'>;
 
-export type FileCategory = 'general' | 'personal' | 'custom';
+export type FileCategory = 'general' | 'personal' | 'custom' | 'confidential';
+
+export type SubCategory =
+  | 'personal' | 'interns' | 'retired' | 'deceased' | 'transferred'
+  | 'dismissed' | 'end_contract' | 'resigned' | 'gov_appointee' | 'olkalau';
+
+export const SUB_CATEGORY_LABELS: Record<SubCategory, string> = {
+  personal: 'Personal Files',
+  interns: 'Interns',
+  retired: 'Semi Active — Retired',
+  deceased: 'Semi Active — Deceased',
+  transferred: 'Semi Active — Transferred',
+  dismissed: 'Semi Active — Dismissed',
+  end_contract: 'Semi Active — End of Contract',
+  resigned: 'Semi Active — Resigned',
+  gov_appointee: "Semi Active — Governor's Appointee",
+  olkalau: 'Semi Active — Olkalau Town Council',
+};
 
 export interface RegistryFileRow {
   id: number;
@@ -24,37 +42,60 @@ export interface RegistryFileRow {
   file_name: string;
   file_number: string;
   category: FileCategory;
+  sub_category: SubCategory | null;
   owner_user_id: number | null;
   created_at: string;
   updated_at: string;
 }
 
-export type RequestStatus = 'requested' | 'assigned' | 'accepted' | 'returned' | 'declined';
+export type RequestStatus = 'pending' | 'pending_accept' | 'accepted' | 'returned' | 'rejected_auto';
+
+export type ProceedToDest =
+  | 'chief_public_service' | 'cs' | 'dhrm' | 'ddhrm' | 'hro' | 'payroll' | 'fleet_manager';
+
+export const PROCEED_TO_LABELS: Record<ProceedToDest, string> = {
+  chief_public_service: 'Chief Public Service',
+  cs: 'CS',
+  dhrm: 'DHRM',
+  ddhrm: 'DDHRM',
+  hro: 'HRO',
+  payroll: 'Payroll',
+  fleet_manager: 'Fleet Manager',
+};
 
 export interface RequestRow {
   id: number;
   file_id: number;
+  registry_code: string | null;
   requester_id: number | null;
   assigned_to_id: number | null;
   status: RequestStatus;
+  is_urgent: number;
+  release_requested: number;
   requested_date: string | null;
   assigned_date: string | null;
   accepted_date: string | null;
   returned_date: string | null;
   due_date: string | null;
+  action_folio: string | null;
+  last_folio: string | null;
+  reason: string | null;
+  file_status: 'actioned' | 'not_actioned' | 'proceed_to' | null;
+  proceed_to_dest: ProceedToDest | null;
   bring_up_note: string | null;
   proceed_to: string | null;
+  returned_by_id: number | null;
   created_at: string;
   updated_at: string;
 }
 
 export type MovementAction =
-  | 'requested'
-  | 'assigned'
+  | 'pending'
+  | 'pending_accept'
   | 'accepted'
   | 'returned'
-  | 'declined'
-  | 'reassigned';
+  | 'rejected_auto'
+  | 'release';
 
 export interface MovementRow {
   id: number;
@@ -64,6 +105,13 @@ export interface MovementRow {
   actor_user_id: number | null;
   subject_user_id: number | null;
   notes: string | null;
+  registry_code: string | null;
+  action_folio: string | null;
+  last_folio: string | null;
+  reason: string | null;
+  file_status: 'actioned' | 'not_actioned' | 'proceed_to' | null;
+  proceed_to_dest: ProceedToDest | null;
+  bring_up_note: string | null;
   created_at: string;
 }
 
@@ -71,6 +119,29 @@ export interface AuthTokenPayload {
   sub: number;
   fileNumber: string;
   role: Role;
+}
+
+export interface NoteRow {
+  id: number;
+  sender_id: number;
+  related_file_id: number | null;
+  note_text: string;
+  is_read: number;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NoteAttachmentRow {
+  id: number;
+  note_id: number;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  created_at: string;
+  // file_data (the actual blob) is deliberately excluded from this type —
+  // it's only ever selected in the single-attachment download route, never
+  // as part of a list query, so a list of notes doesn't drag megabytes of
+  // binary data along with it.
 }
 
 declare global {

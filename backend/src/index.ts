@@ -12,6 +12,8 @@ import usersRoutes from './routes/users.routes';
 import filesRoutes from './routes/files.routes';
 import requestsRoutes from './routes/requests.routes';
 import movementsRoutes from './routes/movements.routes';
+import statsRoutes from './routes/stats.routes';
+import notesRoutes from './routes/notes.routes';
 
 dotenv.config();
 
@@ -54,6 +56,8 @@ app.use('/api/users', usersRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/requests', requestsRoutes);
 app.use('/api/movements', movementsRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/notes', notesRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

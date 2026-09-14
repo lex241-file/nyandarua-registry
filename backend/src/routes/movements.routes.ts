@@ -24,11 +24,14 @@ router.get(
     try {
       let sql = `
         SELECT m.*, f.file_name, f.file_number AS file_number_label,
-               actor.name AS actor_name, subject.name AS subject_name
+               actor.name AS actor_name, subject.name AS subject_name,
+               r.assigned_date AS request_assigned_date,
+               r.returned_date AS request_returned_date
         FROM movements m
         JOIN registry_files f ON f.id = m.file_id
         LEFT JOIN users actor ON actor.id = m.actor_user_id
         LEFT JOIN users subject ON subject.id = m.subject_user_id
+        LEFT JOIN requests r ON r.id = m.request_id
         WHERE 1=1
       `;
       const params: any[] = [];
