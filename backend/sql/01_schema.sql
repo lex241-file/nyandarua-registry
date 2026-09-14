@@ -111,6 +111,33 @@ CREATE TABLE movements (
   INDEX idx_mov_created (created_at)
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------------
+-- Append-only enforcement for `movements`
+-- ---------------------------------------------------------------------
+-- TiDB does NOT support triggers, stored procedures, or user-defined
+-- functions (confirmed in TiDB's own docs: "TiDB supports the majority
+-- of MySQL 8.0 syntax, but does not support triggers, stored procedures,
+-- and user-defined functions"). If you're running on TiDB Cloud, SKIP
+-- the trigger block below entirely — it will fail with a parse error,
+-- and that's expected, not a mistake on your part.
+--
+-- This does NOT weaken the append-only guarantee in practice. The real
+-- enforcement comes from sql/03_app_user.sql, which grants the app's
+-- database user only SELECT and INSERT on this table — no UPDATE or
+-- DELETE grant exists for that user at all. Since the backend only ever
+-- connects using those credentials, neither the application code nor
+-- anyone using its same database credentials via a raw SQL client can
+-- modify or delete a row here, regardless of what a bug or a malicious
+-- request tries to do. The privilege grant is sufficient on its own.
+--
+-- The triggers below add one more layer ONLY relevant if you're on a
+-- real MySQL/MariaDB server (a VPS, on-prem, etc.) where you want the
+-- table protected even against someone connecting with a DIFFERENT,
+-- more privileged account. If you're on real MySQL and want this extra
+-- layer, uncomment and run the block below. If you're on TiDB, leave it
+-- out — proceed straight to sql/03_app_user.sql.
+
+/*
 DELIMITER $$
 
 DROP TRIGGER IF EXISTS trg_movements_no_update $$
@@ -132,3 +159,4 @@ BEGIN
 END $$
 
 DELIMITER ;
+*/

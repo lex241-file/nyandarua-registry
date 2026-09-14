@@ -2,6 +2,16 @@
 -- Least-privilege application database user.
 -- Run this AFTER 01_schema.sql, as a privileged/root MySQL user.
 -- Replace 'change_me' with the same password you put in backend/.env
+--
+-- TiDB Cloud ONLY: every username on TiDB Cloud must include your
+-- cluster's unique prefix, not just the root user — a plain
+-- 'registry_app' will fail to connect with "Missing user name prefix".
+-- Find your prefix in the TiDB Cloud Connect panel (it's the part
+-- before ".root" in the username shown there, e.g. if your root user
+-- is "3xAbC123.root", your prefix is "3xAbC123"). Replace every
+-- occurrence of registry_app below with <your-prefix>.registry_app
+-- (keep the quotes). On real MySQL/MariaDB (not TiDB), leave it as
+-- plain 'registry_app' — no prefix needed there.
 -- =====================================================================
 
 CREATE USER IF NOT EXISTS 'registry_app'@'%' IDENTIFIED BY 'change_me';
