@@ -51,6 +51,9 @@ export default function Layout() {
             <NavLink to="/movements" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
               📋 File Movement
             </NavLink>
+            <NavLink to="/notes" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+              📝 Notes
+            </NavLink>
             <NavLink to="/manage" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
               ⚙️ Manage Files &amp; Users
             </NavLink>

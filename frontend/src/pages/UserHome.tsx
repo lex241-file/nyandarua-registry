@@ -3,6 +3,7 @@ import { api, ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import RegistryFilesBrowser from '../components/RegistryFilesBrowser';
 import SearchCard from '../components/SearchCard';
+import NoteToAdminCard from '../components/NoteToAdminCard';
 import SelectedFilesPanel, { ConfidentialEntry } from '../components/SelectedFilesPanel';
 import { RegistryFile, RegistryRequest, UserDirectoryEntry } from '../types';
 
@@ -158,6 +159,7 @@ export default function UserHome() {
             onClearConfidential={() => setConfidential([])}
             onDone={(m) => { setMsg(m); loadMyRequests(); }}
           />
+          <NoteToAdminCard files={allFiles} />
 
           <div className="card">
             <div className="card-title">

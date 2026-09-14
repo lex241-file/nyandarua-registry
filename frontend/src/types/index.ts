@@ -154,3 +154,27 @@ export interface Movement {
   request_returned_date: string | null;
   created_at: string;
 }
+
+export interface NoteAttachment {
+  id: number;
+  note_id: number;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  created_at: string;
+}
+
+export interface Note {
+  id: number;
+  sender_id: number;
+  sender_name: string;
+  sender_file_number: string;
+  related_file_id: number | null;
+  related_file_name: string | null;
+  related_file_number: string | null;
+  note_text: string;
+  is_read: number;
+  read_at: string | null;
+  attachment_count: number;
+  created_at: string;
+}

@@ -4,6 +4,7 @@ import RequireAuth from './components/RequireAuth';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import Movements from './pages/Movements';
+import Notes from './pages/Notes';
 import Manage from './pages/Manage';
 import ChangePassword from './pages/ChangePassword';
 
@@ -37,6 +38,14 @@ export default function App() {
           element={
             <RequireAuth roles={['admin']}>
               <Movements />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="notes"
+          element={
+            <RequireAuth roles={['admin']}>
+              <Notes />
             </RequireAuth>
           }
         />
