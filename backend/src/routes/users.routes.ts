@@ -268,7 +268,33 @@ router.post(
   }
 );
 
-// NOTE: intentionally no DELETE route for users. Accounts are only ever
-// deactivated/reactivated so that personnel history stays intact.
+// Permanent hard delete — distinct from deactivate/reactivate above.
+// Unlike deactivate (which preserves the account and its history),
+// this genuinely removes the user row. Their past requests, movements,
+// and notes keep existing (those foreign keys are ON DELETE SET NULL/
+// CASCADE, never blocking this), but will show no name attached to
+// them going forward for requester/assignee/actor/sender — the audit
+// trail's dates and file references remain intact, just anonymized.
+// This is genuinely irreversible; the frontend must confirm clearly
+// before calling it.
+router.delete(
+  '/:fileNumber',
+  requireAuth,
+  requireRole('admin'),
+  [param('fileNumber').trim().notEmpty()],
+  handleValidation,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const [result] = await pool.query<any>(
+        'DELETE FROM users WHERE file_number = ?',
+        [req.params.fileNumber]
+      );
+      if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 export default router;

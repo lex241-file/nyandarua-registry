@@ -15,7 +15,11 @@ export default function Layout() {
     navigate('/login');
   }, [logout, navigate]);
 
-  const { showWarning } = useIdleTimeout(!!user, handleLogout);
+  // Admins get a longer idle window (5 hours) since they may leave the
+  // dashboard open while doing other registry work; regular staff get
+  // 1 hour, matching typical single-task usage.
+  const idleTimeoutMs = isAdmin ? 5 * 60 * 60 * 1000 : 60 * 60 * 1000;
+  const { showWarning } = useIdleTimeout(!!user, idleTimeoutMs, handleLogout);
 
   useEffect(() => {
     let cancelled = false;

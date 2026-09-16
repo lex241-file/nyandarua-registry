@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const WARNING_BEFORE_MS = 60 * 1000; // warn 1 minute before logout
 
 /**
- * Logs the user out after 5 minutes of inactivity, showing a warning
- * banner during the final minute. Mirrors the original app's idle timer.
- * Any click/keydown/mousemove/touch/scroll resets the countdown.
+ * Logs the user out after `timeoutMs` of inactivity, showing a warning
+ * banner during the final minute. Any click/keydown/mousemove/touch/
+ * scroll resets the countdown.
  */
-export function useIdleTimeout(active: boolean, onTimeout: () => void) {
+export function useIdleTimeout(active: boolean, timeoutMs: number, onTimeout: () => void) {
   const [showWarning, setShowWarning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -29,7 +28,7 @@ export function useIdleTimeout(active: boolean, onTimeout: () => void) {
         warningTimerRef.current = setTimeout(() => {
           onTimeout();
         }, WARNING_BEFORE_MS);
-      }, IDLE_TIMEOUT_MS - WARNING_BEFORE_MS);
+      }, Math.max(timeoutMs - WARNING_BEFORE_MS, 0));
     }
 
     const events = ['click', 'keydown', 'mousemove', 'touchstart', 'scroll'];
@@ -42,7 +41,7 @@ export function useIdleTimeout(active: boolean, onTimeout: () => void) {
       events.forEach((ev) => document.removeEventListener(ev, handler));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [active, timeoutMs]);
 
   return { showWarning };
 }

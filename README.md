@@ -29,6 +29,8 @@ cd backend/sql
 mysql -u root -p < 01_schema.sql      # creates the database, tables, and audit-log triggers
 mysql -u root -p < 02_migration_v2.sql # adds approval workflow, file sub-categories, rich movement tracking
 mysql -u root -p < 04_migration_v3_index.sql # performance index — fixes slow file/search loading
+mysql -u root -p < 05_migration_v4.sql # urgent requests + release-to-admin flag
+mysql -u root -p < 06_migration_v5_notes.sql # notes with file/photo attachments to admin
 mysql -u root -p < 03_app_user.sql    # creates a least-privilege app user (edit the password first!)
 ```
 

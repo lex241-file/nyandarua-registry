@@ -104,6 +104,12 @@ router.post(
   }
 );
 
+// Removes a file entry entirely. Any category can be removed now (not
+// just custom/confidential) — but the database itself still protects
+// against deleting a file that has ever been part of a request/movement
+// (fk_req_file is ON DELETE RESTRICT), so this will cleanly fail with a
+// clear message for any file with real history, rather than silently
+// destroying that history.
 router.delete(
   '/:fileId',
   requireAuth,
@@ -111,14 +117,19 @@ router.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const [result] = await pool.query<any>(
-        "DELETE FROM registry_files WHERE file_id = ? AND category IN ('custom','confidential')",
+        'DELETE FROM registry_files WHERE file_id = ?',
         [req.params.fileId]
       );
       if (result.affectedRows === 0) {
-        return res.status(404).json({ error: 'Custom/confidential file not found (only those can be removed)' });
+        return res.status(404).json({ error: 'File not found' });
       }
       res.json({ success: true });
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === 'ER_ROW_IS_REFERENCED_2' || err?.errno === 1451) {
+        return res.status(409).json({
+          error: 'This file has request/movement history and cannot be deleted. Only files with no history can be removed.',
+        });
+      }
       next(err);
     }
   }

@@ -131,28 +131,34 @@ export interface Stats {
   rejectedFiles: number;
 }
 
+// Represents one COMPLETED file cycle (requested → assigned → accepted
+// → returned) — the File Movement page shows one of these per file per
+// completed cycle, not a raw per-step audit log entry. The full
+// step-by-step audit trail still exists in the database (the
+// append-only `movements` table), this is just a simplified summary
+// view of finished cycles.
 export interface Movement {
-  id: number;
-  request_id: number;
+  id: number; // the request id
   file_id: number;
   file_name: string;
   file_number_label: string;
-  action: string;
-  actor_user_id: number | null;
-  actor_name: string | null;
-  subject_user_id: number | null;
-  subject_name: string | null;
-  notes: string | null;
   registry_code: string | null;
+  requester_id: number | null;
+  requester_name: string | null;
+  assigned_to_id: number | null;
+  assigned_to_name: string | null;
+  returned_by_id: number | null;
+  returned_by_name: string | null;
+  requested_date: string | null;
+  assigned_date: string | null;
+  accepted_date: string | null;
+  returned_date: string | null;
   action_folio: string | null;
   last_folio: string | null;
   reason: string | null;
   file_status: 'actioned' | 'not_actioned' | 'proceed_to' | null;
   proceed_to_dest: ProceedToDest | null;
   bring_up_note: string | null;
-  request_assigned_date: string | null;
-  request_returned_date: string | null;
-  created_at: string;
 }
 
 export interface NoteAttachment {

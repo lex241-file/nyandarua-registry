@@ -15,7 +15,6 @@ export default function Manage() {
   const [newDesignation, setNewDesignation] = useState('');
   const [newIdNumber, setNewIdNumber] = useState('');
   const [newRole, setNewRole] = useState<Role>('user');
-  const [newFileCategory, setNewFileCategory] = useState<SubCategory>('personal');
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
@@ -96,10 +95,11 @@ export default function Manage() {
         designation: newDesignation,
         idNumber: newIdNumber || null,
         role: newRole,
-        fileCategory: newFileCategory,
+        // fileCategory intentionally omitted — backend defaults it to
+        // 'personal'; this field was removed from the Add User form.
       });
       setNewFileNumber(''); setNewName(''); setNewDesignation(''); setNewIdNumber('');
-      setNewRole('user'); setNewFileCategory('personal');
+      setNewRole('user');
       setMsg('User added. Default password is their ID number (or file number if none given).');
       load();
     } catch (err) {
@@ -122,6 +122,20 @@ export default function Manage() {
       } else {
         setMsg('Could not remove user.');
       }
+    }
+  }
+
+  async function hardDeleteUser(fileNumber: string, name: string) {
+    if (!confirm(
+      `PERMANENTLY delete "${name}"?\n\nThis is different from Remove — it cannot be undone. Their name will no longer appear on any of their past requests or notes (those records stay, just without a name attached). Their personal registry file also becomes unowned rather than deleted.\n\nType-confirm by clicking OK only if you're sure.`
+    )) return;
+    setMsg('');
+    try {
+      await api.delete(`/users/${encodeURIComponent(fileNumber)}`);
+      setMsg(`${name} permanently deleted.`);
+      load();
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Could not delete user.');
     }
   }
 
@@ -213,10 +227,15 @@ export default function Manage() {
   }
 
   async function removeFile(fileId: string, name: string, category: string) {
-    if (category !== 'custom' && category !== 'confidential') return;
-    if (!confirm(`Remove "${name}" from the registry?`)) return;
+    const isSystemFile = category === 'general' || category === 'personal';
+    const warning = isSystemFile
+      ? `Delete "${name}" (a ${category} file)?\n\nThis is a system file from the official registry data, not something added manually. Only delete this if it's a duplicate or genuine error — if it has ever been requested or moved, the database will refuse to delete it and keep that history intact.`
+      : `Remove "${name}" from the registry?`;
+    if (!confirm(warning)) return;
+    setMsg('');
     try {
       await api.delete(`/files/${encodeURIComponent(fileId)}`);
+      setMsg(`"${name}" removed.`);
       loadFiles();
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Could not remove file.');
@@ -254,14 +273,6 @@ export default function Manage() {
                 <option value="user">Staff (User)</option>
                 <option value="admin">Admin</option>
                 <option value="special">Special</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ fontSize: 13, fontWeight: 700, display: 'block', marginBottom: 4 }}>File Category</label>
-              <select value={newFileCategory} onChange={(e) => setNewFileCategory(e.target.value as SubCategory)}>
-                {SUB_CATEGORY_OPTIONS.map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
               </select>
             </div>
             <button className="btn btn-primary" type="submit">+ Add User</button>
@@ -411,6 +422,7 @@ export default function Manage() {
                       <td style={{ display: 'flex', gap: 4, whiteSpace: 'nowrap' }}>
                         <button className="btn btn-sm btn-gold" onClick={() => openEdit(u)}>Edit</button>
                         <button className="btn btn-sm btn-danger" onClick={() => deactivate(u.file_number, u.name)}>Remove</button>
+                        <button className="btn btn-sm btn-danger" style={{ background: '#5a0d0d' }} onClick={() => hardDeleteUser(u.file_number, u.name)}>Delete</button>
                       </td>
                     </tr>
                   ))}
@@ -468,7 +480,6 @@ export default function Manage() {
             <select value={newFileCategoryF} onChange={(e) => setNewFileCategoryF(e.target.value as FileCategory)}>
               <option value="general">General</option>
               <option value="custom">Custom</option>
-              <option value="confidential">Confidential</option>
             </select>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
@@ -507,9 +518,7 @@ export default function Manage() {
                 <tr><th>File Number</th><th>File Name</th><th>Type</th><th>Category</th><th>Status</th><th>Actions</th></tr>
               </thead>
               <tbody>
-                {allFiles.slice(0, 300).map((f) => {
-                  const removable = f.category === 'custom' || f.category === 'confidential';
-                  return (
+                {allFiles.slice(0, 300).map((f) => (
                     <tr key={f.id}>
                       <td style={{ fontWeight: 700 }}>{f.file_number}</td>
                       <td>{f.file_name}</td>
@@ -517,15 +526,10 @@ export default function Manage() {
                       <td style={{ fontSize: 11 }}>{f.sub_category || '—'}</td>
                       <td>{f.is_unavailable ? <span className="tag tag-amber">Out</span> : <span className="tag tag-green">Available</span>}</td>
                       <td>
-                        {removable ? (
-                          <button className="btn btn-sm btn-danger" onClick={() => removeFile(f.file_id, f.file_name, f.category)}>Remove</button>
-                        ) : (
-                          <span style={{ fontSize: 11, color: '#aaa' }}>System file</span>
-                        )}
+                        <button className="btn btn-sm btn-danger" onClick={() => removeFile(f.file_id, f.file_name, f.category)}>Remove</button>
                       </td>
                     </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           )}

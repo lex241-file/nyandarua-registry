@@ -463,4 +463,42 @@ router.post(
   }
 );
 
+// Admin manually declines a pending request (distinct from the 12-hour
+// auto-reject, but reuses the same terminal status/movement action so
+// no schema change is needed — both mean "this did not proceed").
+router.post(
+  '/:id/decline',
+  requireAuth,
+  requireRole('admin'),
+  [param('id').isInt({ min: 1 })],
+  handleValidation,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const conn = await pool.getConnection();
+    try {
+      const requestId = Number(req.params.id);
+      const [rows] = await conn.query<any[]>('SELECT * FROM requests WHERE id = ?', [requestId]);
+      const request = rows[0];
+      if (!request) return res.status(404).json({ error: 'Request not found' });
+      if (request.status !== 'pending') {
+        return res.status(400).json({ error: 'Only a pending request can be declined' });
+      }
+
+      await conn.beginTransaction();
+      await conn.query("UPDATE requests SET status = 'rejected_auto' WHERE id = ?", [requestId]);
+      await conn.query(
+        `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id)
+         VALUES (?, ?, 'rejected_auto', ?, ?)`,
+        [requestId, request.file_id, req.user!.sub, request.requester_id]
+      );
+      await conn.commit();
+      res.json({ success: true });
+    } catch (err) {
+      await conn.rollback();
+      next(err);
+    } finally {
+      conn.release();
+    }
+  }
+);
+
 export default router;
