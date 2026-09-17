@@ -395,7 +395,14 @@ export default function AdminHome() {
                           <td style={{ fontWeight: 700 }}>{r.file_number_label}</td>
                           <td>{r.file_name}</td>
                           <td>{r.registry_code || '—'}</td>
-                          <td>{r.assigned_to_name || '—'}</td>
+                          <td>
+                            {r.assigned_to_name || '—'}
+                            {!!r.signed_by_id && r.signed_by_id !== r.assigned_to_id && (
+                              <div style={{ fontSize: 10, color: '#b8860b', fontWeight: 700 }}>
+                                Signed for by: {r.signed_by_name}
+                              </div>
+                            )}
+                          </td>
                           <td>{r.action_folio || '—'}</td>
                           <td style={{ color: overdue ? '#c0392b' : '#27ae60', fontWeight: 700 }}>{r.due_date ? new Date(r.due_date).toLocaleDateString('en-KE') : '—'}</td>
                           <td>

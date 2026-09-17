@@ -19,6 +19,7 @@ export default function UserHome() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [directory, setDirectory] = useState<UserDirectoryEntry[]>([]);
   const [forwardOpenFor, setForwardOpenFor] = useState<number | null>(null);
+  const [signForOpenFor, setSignForOpenFor] = useState<number | null>(null);
 
   async function loadMyRequests() {
     // Same reasoning as AdminHome: only block-load on the first mount.
@@ -76,6 +77,18 @@ export default function UserHome() {
       loadMyRequests();
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Could not accept file.');
+    }
+  }
+
+  async function signForFile(id: number, onBehalfOfUserId: number) {
+    setMsg('');
+    try {
+      await api.post(`/requests/${id}/sign-for`, { onBehalfOfUserId });
+      setMsg('Signed for successfully — the file now shows on their account.');
+      setSignForOpenFor(null);
+      loadMyRequests();
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Could not sign for this file.');
     }
   }
 
@@ -172,18 +185,38 @@ export default function UserHome() {
               <p style={{ fontSize: 12, color: '#888' }}>No files awaiting your acceptance.</p>
             ) : (
               pendingAccept.map((r) => (
-                <div key={r.id} className="file-row-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700 }}>{r.file_name}</div>
-                    <div style={{ fontSize: 11, color: '#888' }}>
-                      {r.file_number_label} | Assigned: {r.assigned_date ? new Date(r.assigned_date).toLocaleDateString('en-KE') : '—'}
+                <div key={r.id} className="file-row-label" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>{r.file_name}</div>
+                      <div style={{ fontSize: 11, color: '#888' }}>
+                        {r.file_number_label} | Assigned: {r.assigned_date ? new Date(r.assigned_date).toLocaleDateString('en-KE') : '—'}
+                      </div>
+                      {r.registry_code && <div style={{ fontSize: 11 }}>Registry Code: <strong>{r.registry_code}</strong></div>}
+                      {r.action_folio && <div style={{ fontSize: 11 }}>Action Folio: <strong>{r.action_folio}</strong></div>}
+                      {r.last_folio && <div style={{ fontSize: 11 }}>Last Folio: <strong>{r.last_folio}</strong></div>}
+                      {r.reason && <div style={{ fontSize: 11 }}>Reason: <strong>{r.reason}</strong></div>}
                     </div>
-                    {r.registry_code && <div style={{ fontSize: 11 }}>Registry Code: <strong>{r.registry_code}</strong></div>}
-                    {r.action_folio && <div style={{ fontSize: 11 }}>Action Folio: <strong>{r.action_folio}</strong></div>}
-                    {r.last_folio && <div style={{ fontSize: 11 }}>Last Folio: <strong>{r.last_folio}</strong></div>}
-                    {r.reason && <div style={{ fontSize: 11 }}>Reason: <strong>{r.reason}</strong></div>}
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn btn-sm btn-success" onClick={() => acceptFile(r.id)}>✓ Accept</button>
+                      <button className="btn btn-sm btn-gold" onClick={() => setSignForOpenFor(signForOpenFor === r.id ? null : r.id)}>Sign For</button>
+                    </div>
                   </div>
-                  <button className="btn btn-sm btn-success" onClick={() => acceptFile(r.id)}>✓ Accept</button>
+                  {signForOpenFor === r.id && (
+                    <select
+                      autoFocus
+                      defaultValue=""
+                      style={{ minWidth: 220 }}
+                      onChange={(e) => {
+                        if (e.target.value) signForFile(r.id, Number(e.target.value));
+                      }}
+                    >
+                      <option value="" disabled>Sign for who…</option>
+                      {directory.filter((u) => u.id !== user?.id).map((u) => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.file_number})</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               ))
             )}

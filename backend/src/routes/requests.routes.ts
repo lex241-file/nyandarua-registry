@@ -56,12 +56,13 @@ router.get(
       let sql = `
         SELECT r.*, f.file_name, f.file_number AS file_number_label,
                ru.name AS requester_name, au.name AS assigned_to_name,
-               rb.name AS returned_by_name
+               rb.name AS returned_by_name, sb.name AS signed_by_name
         FROM requests r
         JOIN registry_files f ON f.id = r.file_id
         LEFT JOIN users ru ON ru.id = r.requester_id
         LEFT JOIN users au ON au.id = r.assigned_to_id
         LEFT JOIN users rb ON rb.id = r.returned_by_id
+        LEFT JOIN users sb ON sb.id = r.signed_by_id
         WHERE 1=1
       `;
       const params: any[] = [];
@@ -314,6 +315,64 @@ router.post(
         `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id)
          VALUES (?, ?, 'accepted', ?, ?)`,
         [requestId, request.file_id, req.user!.sub, request.assigned_to_id]
+      );
+      await conn.commit();
+      res.json({ success: true, dueDate });
+    } catch (err) {
+      await conn.rollback();
+      next(err);
+    } finally {
+      conn.release();
+    }
+  }
+);
+
+// The current assignee signs for a pending_accept file on behalf of a
+// different regular user — e.g. collecting it as a colleague/courier.
+// The file then belongs to whoever it was signed for (shows in THEIR
+// My Files, they're responsible for returning it), while signed_by_id
+// keeps a permanent record of who physically signed for it, so admin
+// can see both "assigned to" and "signed for by" separately.
+router.post(
+  '/:id/sign-for',
+  requireAuth,
+  [param('id').isInt({ min: 1 }), body('onBehalfOfUserId').isInt({ min: 1 })],
+  handleValidation,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const conn = await pool.getConnection();
+    try {
+      const requestId = Number(req.params.id);
+      const { onBehalfOfUserId } = req.body;
+
+      const [rows] = await conn.query<any[]>('SELECT * FROM requests WHERE id = ?', [requestId]);
+      const request = rows[0];
+      if (!request) return res.status(404).json({ error: 'Request not found' });
+      if (request.status !== 'pending_accept') {
+        return res.status(400).json({ error: `Cannot sign for a request in '${request.status}' status` });
+      }
+      if (request.assigned_to_id !== req.user!.sub && req.user!.role !== 'admin') {
+        return res.status(403).json({ error: 'This file was not assigned to you' });
+      }
+
+      const [targetRows] = await conn.query<any[]>(
+        "SELECT id, role FROM users WHERE id = ? AND is_active = 1 AND role = 'user'",
+        [onBehalfOfUserId]
+      );
+      if (targetRows.length === 0) {
+        return res.status(404).json({ error: 'Can only sign for an active regular staff account' });
+      }
+      const dueDate = computeDueDate('user', new Date());
+
+      await conn.beginTransaction();
+      await conn.query(
+        `UPDATE requests SET status = 'accepted', accepted_date = NOW(), due_date = ?,
+           assigned_to_id = ?, signed_by_id = ? WHERE id = ?`,
+        [dueDate, onBehalfOfUserId, req.user!.sub, requestId]
+      );
+      await conn.query(
+        `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id, reason)
+         VALUES (?, ?, 'accepted', ?, ?, ?)`,
+        [requestId, request.file_id, req.user!.sub, onBehalfOfUserId, 'Signed for by proxy']
       );
       await conn.commit();
       res.json({ success: true, dueDate });

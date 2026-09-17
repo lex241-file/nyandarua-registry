@@ -31,6 +31,7 @@ mysql -u root -p < 02_migration_v2.sql # adds approval workflow, file sub-catego
 mysql -u root -p < 04_migration_v3_index.sql # performance index — fixes slow file/search loading
 mysql -u root -p < 05_migration_v4.sql # urgent requests + release-to-admin flag
 mysql -u root -p < 06_migration_v5_notes.sql # notes with file/photo attachments to admin
+mysql -u root -p < 07_migration_v6_sign_for.sql # sign-for-a-colleague feature
 mysql -u root -p < 03_app_user.sql    # creates a least-privilege app user (edit the password first!)
 ```
 
