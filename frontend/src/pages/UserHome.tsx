@@ -18,8 +18,12 @@ export default function UserHome() {
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [directory, setDirectory] = useState<UserDirectoryEntry[]>([]);
+  const [adminDirectory, setAdminDirectory] = useState<UserDirectoryEntry[]>([]);
   const [forwardOpenFor, setForwardOpenFor] = useState<number | null>(null);
   const [signForOpenFor, setSignForOpenFor] = useState<number | null>(null);
+  const [releaseOpenFor, setReleaseOpenFor] = useState<number | null>(null);
+  const [selectedPendingAccept, setSelectedPendingAccept] = useState<Set<number>>(new Set());
+  const [acceptingBatch, setAcceptingBatch] = useState(false);
 
   async function loadMyRequests() {
     // Same reasoning as AdminHome: only block-load on the first mount.
@@ -37,11 +41,13 @@ export default function UserHome() {
 
   useEffect(() => {
     loadMyRequests();
-    // Forward dropdown must strictly list regular staff (role 'user')
-    // only — never admins or special accounts.
-    api.get<{ users: UserDirectoryEntry[] }>('/users/directory').then((res) =>
-      setDirectory(res.users.filter((u) => u.role === 'user'))
-    );
+    api.get<{ users: UserDirectoryEntry[] }>('/users/directory').then((res) => {
+      // Forward/Sign For dropdowns strictly list regular staff (role
+      // 'user') only — never admins or special accounts.
+      setDirectory(res.users.filter((u) => u.role === 'user'));
+      // The Release dropdown is the opposite: admins only.
+      setAdminDirectory(res.users.filter((u) => u.role === 'admin'));
+    });
     // Poll so pending_accept/accepted status changes made by an admin
     // (or a peer's Forward) show up here without a manual refresh.
     const interval = setInterval(loadMyRequests, 20000);
@@ -80,6 +86,37 @@ export default function UserHome() {
     }
   }
 
+  function togglePendingAcceptSelect(id: number) {
+    setSelectedPendingAccept((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function togglePendingAcceptSelectAll() {
+    if (selectedPendingAccept.size === pendingAccept.length) setSelectedPendingAccept(new Set());
+    else setSelectedPendingAccept(new Set(pendingAccept.map((r) => r.id)));
+  }
+  async function acceptSelected() {
+    setAcceptingBatch(true);
+    setMsg('');
+    let ok = 0;
+    let failed = 0;
+    for (const id of selectedPendingAccept) {
+      try {
+        await api.post(`/requests/${id}/accept`);
+        ok++;
+      } catch {
+        failed++;
+      }
+    }
+    setMsg(`${ok} file(s) accepted.${failed ? ` ${failed} could not be accepted.` : ''}`);
+    setSelectedPendingAccept(new Set());
+    setAcceptingBatch(false);
+    loadMyRequests();
+  }
+
   async function signForFile(id: number, onBehalfOfUserId: number) {
     setMsg('');
     try {
@@ -115,14 +152,32 @@ export default function UserHome() {
     }
   }
 
-  async function releaseFile(id: number) {
+  // "Actioned File" — the original generic ping-only notification to
+  // admin (unchanged mechanism, just renamed since "Release" now refers
+  // to the new release-to-a-specific-admin action below).
+  async function markActioned(id: number) {
     setMsg('');
     try {
       await api.post(`/requests/${id}/release`);
-      setMsg('Admin has been notified to collect this file.');
+      setMsg('Admin has been notified this file was actioned.');
       loadMyRequests();
     } catch (err) {
-      setMsg(err instanceof ApiError ? err.message : 'Could not send release notice.');
+      setMsg(err instanceof ApiError ? err.message : 'Could not notify admin.');
+    }
+  }
+
+  // Actually hands the file back, to a specific admin the user chooses.
+  // This completes the cycle (status becomes 'returned'), so it shows up
+  // on the File Movement page automatically.
+  async function releaseToAdmin(id: number, adminId: number) {
+    setMsg('');
+    try {
+      await api.post(`/requests/${id}/release-to-admin`, { adminId });
+      setMsg('File released to admin.');
+      setReleaseOpenFor(null);
+      loadMyRequests();
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Could not release file.');
     }
   }
 
@@ -179,6 +234,24 @@ export default function UserHome() {
               📥 Files Assigned to Me
               {pendingAccept.length > 0 && <span className="tag tag-amber">{pendingAccept.length} pending</span>}
             </div>
+            {pendingAccept.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedPendingAccept.size === pendingAccept.length}
+                    onChange={togglePendingAcceptSelectAll}
+                    style={{ width: 'auto' }}
+                  />
+                  Select All
+                </label>
+                {selectedPendingAccept.size > 0 && (
+                  <button className="btn btn-sm btn-success" disabled={acceptingBatch} onClick={acceptSelected}>
+                    {acceptingBatch ? 'Accepting…' : `✓ Accept Selected (${selectedPendingAccept.size})`}
+                  </button>
+                )}
+              </div>
+            )}
             {loading ? (
               <p style={{ fontSize: 12, color: '#888' }}>Loading…</p>
             ) : pendingAccept.length === 0 ? (
@@ -187,15 +260,23 @@ export default function UserHome() {
               pendingAccept.map((r) => (
                 <div key={r.id} className="file-row-label" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 700 }}>{r.file_name}</div>
-                      <div style={{ fontSize: 11, color: '#888' }}>
-                        {r.file_number_label} | Assigned: {r.assigned_date ? new Date(r.assigned_date).toLocaleDateString('en-KE') : '—'}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedPendingAccept.has(r.id)}
+                        onChange={() => togglePendingAcceptSelect(r.id)}
+                        style={{ width: 'auto', marginTop: 4 }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>{r.file_name}</div>
+                        <div style={{ fontSize: 11, color: '#888' }}>
+                          {r.file_number_label} | Assigned: {r.assigned_date ? new Date(r.assigned_date).toLocaleDateString('en-KE') : '—'}
+                        </div>
+                        {r.registry_code && <div style={{ fontSize: 11 }}>Registry Code: <strong>{r.registry_code}</strong></div>}
+                        {r.action_folio && <div style={{ fontSize: 11 }}>Action Folio: <strong>{r.action_folio}</strong></div>}
+                        {r.last_folio && <div style={{ fontSize: 11 }}>Last Folio: <strong>{r.last_folio}</strong></div>}
+                        {r.reason && <div style={{ fontSize: 11 }}>Reason: <strong>{r.reason}</strong></div>}
                       </div>
-                      {r.registry_code && <div style={{ fontSize: 11 }}>Registry Code: <strong>{r.registry_code}</strong></div>}
-                      {r.action_folio && <div style={{ fontSize: 11 }}>Action Folio: <strong>{r.action_folio}</strong></div>}
-                      {r.last_folio && <div style={{ fontSize: 11 }}>Last Folio: <strong>{r.last_folio}</strong></div>}
-                      {r.reason && <div style={{ fontSize: 11 }}>Reason: <strong>{r.reason}</strong></div>}
                     </div>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <button className="btn btn-sm btn-success" onClick={() => acceptFile(r.id)}>✓ Accept</button>
@@ -254,7 +335,7 @@ export default function UserHome() {
                           </td>
                           <td>
                             {overdue ? <span className="tag tag-red">Overdue</span> : <span className="tag tag-green">Active</span>}
-                            {!!r.release_requested && <span className="tag tag-amber" style={{ marginLeft: 4 }}>Release sent</span>}
+                            {!!r.release_requested && <span className="tag tag-amber" style={{ marginLeft: 4 }}>Actioned notice sent</span>}
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -265,9 +346,15 @@ export default function UserHome() {
                               <button
                                 className="btn btn-sm btn-gold"
                                 disabled={!!r.release_requested}
-                                onClick={() => releaseFile(r.id)}
+                                onClick={() => markActioned(r.id)}
                               >
-                                {r.release_requested ? 'Released' : 'Release'}
+                                {r.release_requested ? 'Actioned' : 'Actioned File'}
+                              </button>
+                              <button
+                                className="btn btn-sm btn-warn"
+                                onClick={() => setReleaseOpenFor(releaseOpenFor === r.id ? null : r.id)}
+                              >
+                                Release
                               </button>
                             </div>
                             {forwardOpenFor === r.id && (
@@ -282,6 +369,21 @@ export default function UserHome() {
                                 <option value="" disabled>Forward to…</option>
                                 {directory.filter((u) => u.id !== user?.id).map((u) => (
                                   <option key={u.id} value={u.id}>{u.name} ({u.file_number})</option>
+                                ))}
+                              </select>
+                            )}
+                            {releaseOpenFor === r.id && (
+                              <select
+                                autoFocus
+                                defaultValue=""
+                                style={{ marginTop: 4, minWidth: 180 }}
+                                onChange={(e) => {
+                                  if (e.target.value) releaseToAdmin(r.id, Number(e.target.value));
+                                }}
+                              >
+                                <option value="" disabled>Release to which admin…</option>
+                                {adminDirectory.map((a) => (
+                                  <option key={a.id} value={a.id}>{a.name} ({a.file_number})</option>
                                 ))}
                               </select>
                             )}
