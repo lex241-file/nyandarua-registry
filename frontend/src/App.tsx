@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import Layout from './components/Layout';
 import RequireAuth from './components/RequireAuth';
 import Login from './pages/Login';
@@ -10,54 +11,57 @@ import ChangePassword from './pages/ChangePassword';
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/change-password"
-        element={
-          <RequireAuth>
-            <ChangePassword />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <Layout />
-          </RequireAuth>
-        }
-      >
-        {/* Home is the ONLY page regular staff ever see — it contains
-            everything they need (browse, search, request, accept, my files).
-            Admins get two additional pages, matching the original app's
-            role-gated nav exactly. */}
-        <Route index element={<Home />} />
+    <>
+      <Routes>
+        <Route path="/login" element={<Login />} />
         <Route
-          path="movements"
+          path="/change-password"
           element={
-            <RequireAuth roles={['admin']}>
-              <Movements />
+            <RequireAuth>
+              <ChangePassword />
             </RequireAuth>
           }
         />
         <Route
-          path="notes"
+          path="/"
           element={
-            <RequireAuth roles={['admin']}>
-              <Notes />
+            <RequireAuth>
+              <Layout />
             </RequireAuth>
           }
-        />
-        <Route
-          path="manage"
-          element={
-            <RequireAuth roles={['admin']}>
-              <Manage />
-            </RequireAuth>
-          }
-        />
-      </Route>
-    </Routes>
+        >
+          {/* Home is the ONLY page regular staff ever see — it contains
+              everything they need (browse, search, request, accept, my files).
+              Admins get two additional pages, matching the original app's
+              role-gated nav exactly. */}
+          <Route index element={<Home />} />
+          <Route
+            path="movements"
+            element={
+              <RequireAuth roles={['admin']}>
+                <Movements />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="notes"
+            element={
+              <RequireAuth roles={['admin']}>
+                <Notes />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="manage"
+            element={
+              <RequireAuth roles={['admin']}>
+                <Manage />
+              </RequireAuth>
+            }
+          />
+        </Route>
+      </Routes>
+      <Analytics />
+    </>
   );
 }
