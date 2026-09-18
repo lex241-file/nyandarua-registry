@@ -27,6 +27,8 @@ export default function AdminHome() {
 
   // Per-pending-request inline approve fields.
   const [approveFields, setApproveFields] = useState<Record<number, { registryCode: string; folio: string; reason: string; assignTo: number | null }>>({});
+  const [selectedPending, setSelectedPending] = useState<Set<number>>(new Set());
+  const [bulkApproving, setBulkApproving] = useState(false);
 
   async function loadAll() {
     // Only show the blocking "Loading…" state on the very first load.
@@ -121,6 +123,60 @@ export default function AdminHome() {
       loadAll();
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Could not approve request.');
+    }
+  }
+
+  function togglePendingSelect(id: number) {
+    setSelectedPending((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function togglePendingSelectAll() {
+    if (selectedPending.size === pending.length) setSelectedPending(new Set());
+    else setSelectedPending(new Set(pending.map((r) => r.id)));
+  }
+
+  async function approveSelectedPending() {
+    setBulkApproving(true);
+    setMsg('');
+    let ok = 0;
+    let failed = 0;
+    for (const r of pending.filter((p) => selectedPending.has(p.id))) {
+      const fields = getApproveFields(r);
+      const assignedToId = fields.assignTo ?? r.requester_id;
+      if (!assignedToId) { failed++; continue; }
+      try {
+        await api.post('/requests/assign', {
+          requestId: r.id,
+          fileId: r.file_id,
+          assignedToId,
+          registryCode: fields.registryCode || undefined,
+          actionFolio: fields.folio || undefined,
+          reason: fields.reason || undefined,
+        });
+        ok++;
+      } catch {
+        failed++;
+      }
+    }
+    setMsg(`${ok} request(s) approved.${failed ? ` ${failed} could not be approved (choose an assignee for each).` : ''}`);
+    setSelectedPending(new Set());
+    setBulkApproving(false);
+    loadAll();
+  }
+
+  async function declineRequest(id: number) {
+    if (!confirm('Cancel this file request? The requester will need to submit a new request if they still need it.')) return;
+    setMsg('');
+    try {
+      await api.post(`/requests/${id}/decline`);
+      setMsg('Request cancelled.');
+      loadAll();
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Could not cancel request.');
     }
   }
 
@@ -400,6 +456,11 @@ export default function AdminHome() {
                             {!!r.signed_by_id && r.signed_by_id !== r.assigned_to_id && (
                               <div style={{ fontSize: 10, color: '#b8860b', fontWeight: 700 }}>
                                 Signed for by: {r.signed_by_name}
+                              </div>
+                            )}
+                            {!!r.forwarded_from_id && (
+                              <div style={{ fontSize: 10, color: '#185FA5', fontWeight: 700 }}>
+                                Forwarded from: {r.forwarded_from_name}
                               </div>
                             )}
                           </td>

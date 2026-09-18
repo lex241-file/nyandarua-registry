@@ -182,7 +182,16 @@ export default function UserHome() {
   }
 
   const pendingAccept = myRequests.filter((r) => r.status === 'pending_accept');
-  const myFiles = myRequests.filter((r) => r.status === 'accepted');
+  // "My Files" now includes two kinds of rows: files actually WITH me
+  // (assigned_to_id is me — full actions available), and files I
+  // forwarded or signed for that have moved on to someone else (shown
+  // read-only, marked "Now with: X") so the file stays visible on my
+  // account too, not just the new holder's.
+  const myFiles = myRequests.filter((r) => r.status === 'accepted' && r.assigned_to_id === user?.id);
+  const referenceFiles = myRequests.filter(
+    (r) => r.status === 'accepted' && r.assigned_to_id !== user?.id &&
+      (r.forwarded_from_id === user?.id || r.signed_by_id === user?.id)
+  );
   const allFiles = Array.from(fileCache.values());
 
   function isOverdue(r: RegistryRequest) {
@@ -324,7 +333,11 @@ export default function UserHome() {
                       return (
                         <tr key={r.id} className={overdue ? 'overdue-row' : ''}>
                           <td>{r.assigned_date ? new Date(r.assigned_date).toLocaleDateString('en-KE') : '—'}</td>
-                          <td style={{ fontWeight: 700 }}>{r.file_number_label}</td>
+                          <td style={{ fontWeight: 700 }}>
+                            {r.file_number_label}
+                            {r.forwarded_from_id && <span className="tag tag-blue" style={{ display: 'block', marginTop: 2, fontWeight: 400 }}>Forwarded from {r.forwarded_from_name}</span>}
+                            {r.signed_by_id && r.signed_by_id !== user?.id && <span className="tag tag-gold" style={{ display: 'block', marginTop: 2, fontWeight: 400 }}>Signed for by {r.signed_by_name}</span>}
+                          </td>
                           <td>{r.file_name}</td>
                           <td>{r.registry_code || '—'}</td>
                           <td>{r.action_folio || '—'}</td>
@@ -396,6 +409,36 @@ export default function UserHome() {
               </div>
             )}
           </div>
+
+          {referenceFiles.length > 0 && (
+            <div className="card">
+              <div className="card-title">
+                Forwarded / Signed-For by Me
+                <span className="tag tag-gray" style={{ marginLeft: 'auto' }}>{referenceFiles.length} file(s)</span>
+              </div>
+              <p style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+                These files are no longer with you, but shown here so you can see where they went.
+              </p>
+              <table className="reg-table">
+                <thead>
+                  <tr><th>File Number</th><th>File Name</th><th>Now With</th><th>How</th></tr>
+                </thead>
+                <tbody>
+                  {referenceFiles.map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ fontWeight: 700 }}>{r.file_number_label}</td>
+                      <td>{r.file_name}</td>
+                      <td>{r.assigned_to_name || '—'}</td>
+                      <td>
+                        {r.forwarded_from_id === user?.id && <span className="tag tag-blue">Forwarded by you</span>}
+                        {r.signed_by_id === user?.id && r.forwarded_from_id !== user?.id && <span className="tag tag-gold">You signed for it</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -93,6 +93,8 @@ export interface RegistryRequest {
   assigned_to_name: string | null;
   signed_by_id: number | null;
   signed_by_name: string | null;
+  forwarded_from_id: number | null;
+  forwarded_from_name: string | null;
   status: RequestStatus;
   is_urgent: number;
   release_requested: number;

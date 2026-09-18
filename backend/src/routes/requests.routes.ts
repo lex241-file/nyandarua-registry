@@ -56,13 +56,15 @@ router.get(
       let sql = `
         SELECT r.*, f.file_name, f.file_number AS file_number_label,
                ru.name AS requester_name, au.name AS assigned_to_name,
-               rb.name AS returned_by_name, sb.name AS signed_by_name
+               rb.name AS returned_by_name, sb.name AS signed_by_name,
+               ff.name AS forwarded_from_name
         FROM requests r
         JOIN registry_files f ON f.id = r.file_id
         LEFT JOIN users ru ON ru.id = r.requester_id
         LEFT JOIN users au ON au.id = r.assigned_to_id
         LEFT JOIN users rb ON rb.id = r.returned_by_id
         LEFT JOIN users sb ON sb.id = r.signed_by_id
+        LEFT JOIN users ff ON ff.id = r.forwarded_from_id
         WHERE 1=1
       `;
       const params: any[] = [];
@@ -72,8 +74,12 @@ router.get(
         params.push(req.query.status);
       }
       if (req.query.mine === 'true') {
-        sql += ' AND (r.requester_id = ? OR r.assigned_to_id = ?)';
-        params.push(req.user!.sub, req.user!.sub);
+        // Includes the current actual holder (assigned_to_id) AND
+        // anyone who forwarded or signed for this file — so it stays
+        // visible on their account too (shown there as "now with X"),
+        // not just on the new holder's.
+        sql += ' AND (r.requester_id = ? OR r.assigned_to_id = ? OR r.forwarded_from_id = ? OR r.signed_by_id = ?)';
+        params.push(req.user!.sub, req.user!.sub, req.user!.sub, req.user!.sub);
       }
       // Urgent requests bubble to the top of the queue (e.g. the pending
       // approval list), oldest-first within each urgency tier.
@@ -450,17 +456,24 @@ router.post(
 // staff, not a formal registry action admin needs to see or approve.
 // The file simply starts showing up in the new holder's "My Files"
 // instead of the original holder's.
+// Forwarding a file now DOES show up in admin/File Movement (a change
+// from the earlier design) — every forward is logged as its own
+// movement action. forwarded_from_id records who last forwarded it, so
+// that person can still see the file (marked as "now with X") even
+// though assigned_to_id has moved on to the new holder — the file stays
+// visible on BOTH accounts, not just the new one's.
 router.post(
   '/:id/forward',
   requireAuth,
   [param('id').isInt({ min: 1 }), body('toUserId').isInt({ min: 1 })],
   handleValidation,
   async (req: Request, res: Response, next: NextFunction) => {
+    const conn = await pool.getConnection();
     try {
       const requestId = Number(req.params.id);
       const { toUserId } = req.body;
 
-      const [rows] = await pool.query<any[]>('SELECT * FROM requests WHERE id = ?', [requestId]);
+      const [rows] = await conn.query<any[]>('SELECT * FROM requests WHERE id = ?', [requestId]);
       const request = rows[0];
       if (!request) return res.status(404).json({ error: 'Request not found' });
       if (request.status !== 'accepted') {
@@ -469,13 +482,26 @@ router.post(
       if (request.assigned_to_id !== req.user!.sub && req.user!.role !== 'admin') {
         return res.status(403).json({ error: 'This file is not currently with you' });
       }
-      const [targetRows] = await pool.query<any[]>('SELECT id FROM users WHERE id = ? AND is_active = 1', [toUserId]);
+      const [targetRows] = await conn.query<any[]>('SELECT id FROM users WHERE id = ? AND is_active = 1', [toUserId]);
       if (targetRows.length === 0) return res.status(404).json({ error: 'Selected user not found' });
 
-      await pool.query('UPDATE requests SET assigned_to_id = ? WHERE id = ?', [toUserId, requestId]);
+      await conn.beginTransaction();
+      await conn.query(
+        'UPDATE requests SET assigned_to_id = ?, forwarded_from_id = ? WHERE id = ?',
+        [toUserId, req.user!.sub, requestId]
+      );
+      await conn.query(
+        `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id)
+         VALUES (?, ?, 'forwarded', ?, ?)`,
+        [requestId, request.file_id, req.user!.sub, toUserId]
+      );
+      await conn.commit();
       res.json({ success: true });
     } catch (err) {
+      await conn.rollback();
       next(err);
+    } finally {
+      conn.release();
     }
   }
 );
@@ -548,6 +574,61 @@ router.post(
         `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id)
          VALUES (?, ?, 'rejected_auto', ?, ?)`,
         [requestId, request.file_id, req.user!.sub, request.requester_id]
+      );
+      await conn.commit();
+      res.json({ success: true });
+    } catch (err) {
+      await conn.rollback();
+      next(err);
+    } finally {
+      conn.release();
+    }
+  }
+);
+
+// The current holder hands the file directly to a specific admin —
+// distinct from the generic "please collect this" ping (see /release
+// below, now labelled "Actioned File" in the UI). This one actually
+// completes the cycle: status becomes 'returned', with returned_by_id
+// set to the CHOSEN ADMIN (not the person releasing it) — consistent
+// with what returned_by_id means elsewhere (who received/processed the
+// return). Since the File Movement page shows every returned request,
+// this shows up there automatically, no separate query change needed.
+router.post(
+  '/:id/release-to-admin',
+  requireAuth,
+  [param('id').isInt({ min: 1 }), body('adminId').isInt({ min: 1 })],
+  handleValidation,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const conn = await pool.getConnection();
+    try {
+      const requestId = Number(req.params.id);
+      const { adminId } = req.body;
+
+      const [rows] = await conn.query<any[]>('SELECT * FROM requests WHERE id = ?', [requestId]);
+      const request = rows[0];
+      if (!request) return res.status(404).json({ error: 'Request not found' });
+      if (request.status !== 'accepted') {
+        return res.status(400).json({ error: 'Only a file currently with you can be released' });
+      }
+      if (request.assigned_to_id !== req.user!.sub && req.user!.role !== 'admin') {
+        return res.status(403).json({ error: 'This file is not currently with you' });
+      }
+      const [adminRows] = await conn.query<any[]>(
+        "SELECT id FROM users WHERE id = ? AND is_active = 1 AND role = 'admin'",
+        [adminId]
+      );
+      if (adminRows.length === 0) return res.status(404).json({ error: 'Selected admin not found' });
+
+      await conn.beginTransaction();
+      await conn.query(
+        `UPDATE requests SET status = 'returned', returned_date = NOW(), returned_by_id = ? WHERE id = ?`,
+        [adminId, requestId]
+      );
+      await conn.query(
+        `INSERT INTO movements (request_id, file_id, action, actor_user_id, subject_user_id)
+         VALUES (?, ?, 'returned', ?, ?)`,
+        [requestId, request.file_id, req.user!.sub, adminId]
       );
       await conn.commit();
       res.json({ success: true });
